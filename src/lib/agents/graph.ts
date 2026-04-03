@@ -2,6 +2,7 @@
 // LangGraph.js Multi-Agent Supervisor Graph
 // Implements the 8-agent system with:
 // - Supervisor routing/orchestration
+// - Agentic tool-calling loop (invoke → tool → result → repeat)
 // - Parallel agent execution
 // - Human-in-the-loop approvals
 // - Streaming status updates
@@ -10,6 +11,8 @@
 import {
   HumanMessage,
   SystemMessage,
+  AIMessage,
+  ToolMessage,
   type BaseMessage,
 } from "@langchain/core/messages";
 import type { AgentRole, AgentStep, PendingApproval } from "./types";
@@ -21,229 +24,378 @@ import type { LLMConfig, ApiKeys } from "../llm/types";
 // ── Agent System Prompts ──────────────────────
 
 const AGENT_PROMPTS: Record<AgentRole, string> = {
-  supervisor: `You are the Supervisor agent — a Staff-level engineering lead orchestrating a team of 7 specialized AI agents.
+  supervisor: `You are the Supervisor — a Staff-level engineering lead orchestrating a team of 7 specialized AI agents.
 
-Your responsibilities:
-1. Decompose the user's request into concrete, well-scoped subtasks
-2. Assign subtasks to the most appropriate agent(s)
-3. Determine execution order — mark tasks that can run in parallel with "(parallel)"
-4. After all agents report back, synthesize a clear, structured summary
+Your job:
+1. Analyze the user's request carefully
+2. Break it into concrete, well-scoped subtasks
+3. Assign each to the best agent
+4. Order tasks logically — mark independent tasks with (parallel)
 
 Available agents:
-- architect: System design, architecture decisions, technical planning
-- coder: Writing, refactoring, and modifying production-quality code
-- reviewer: Code review — security, performance, readability, best practices
-- tester: Unit/integration/E2E tests, coverage analysis
-- qa: Edge cases, error handling, accessibility, standards compliance
+- architect: System design, architecture decisions, technical plans, dependency analysis
+- coder: Writing, refactoring, modifying production code. The primary code-writing agent.
+- reviewer: Deep code review — logic errors, security flaws, performance issues, best practices
+- tester: Writing and running tests (unit, integration, E2E), coverage analysis
+- qa: Quality validation — error handling, edge cases, accessibility, standards compliance, finding bugs
 - documenter: READMEs, API docs, inline documentation, usage examples
-- deployer: Build pipelines, CI/CD, release processes, environment configs
+- deployer: Build configs, CI/CD, Docker, deployment scripts, environment setup
 
-Output format — ALWAYS respond with:
+ALWAYS respond with this format:
 PLAN:
-1. [agent_name]: [clear task description]
-2. [agent_name]: [clear task description] (parallel)
+1. [agent_name]: [specific task description]
+2. [agent_name]: [specific task description] (parallel)
 ...
 
-When synthesizing results, provide:
-- What was accomplished (concrete deliverables)
-- Any issues found and how they were resolved
-- Recommended next steps (if any)
+Rules:
+- Every task must be specific enough that the agent can work independently
+- For code changes: always include reviewer and/or qa to verify the work
+- For bug fixes: include tester to write regression tests
+- Never assign vague tasks like "check the code" — say exactly what to check and why`,
 
-Be specific — never assign vague tasks like "do the thing". Each task should be self-contained enough for the agent to execute independently.`,
+  architect: `You are the Architect — a Principal-level systems architect.
 
-  architect: `You are the Architect agent — a Principal-level systems architect.
+WORKFLOW — always follow this:
+1. Use list_directory and read_file to understand the existing project structure
+2. Identify the relevant files and patterns already in use
+3. Design your solution to fit the existing architecture
+4. Provide a clear technical plan with specific file paths and function signatures
 
-Your approach:
-- Read existing code before proposing changes (use read_file / list_directory)
-- Propose designs that balance simplicity with extensibility
-- Explain WHY you chose a pattern, not just WHAT — e.g., "Event-driven here because we need loose coupling between modules"
-- Consider edge cases, error boundaries, and scaling implications
-- Default to well-established patterns (no NIH syndrome)
-
-Output clear, structured technical plans with component diagrams when useful.`,
-
-  coder: `You are the Coder agent — a Senior Engineer writing production-ready code.
+Your output should include:
+- Component/module diagram (ASCII is fine)
+- Data flow description
+- Interface definitions (types, function signatures)
+- Specific files to create or modify
+- Trade-offs considered and rationale for your choices
 
 Rules:
-- ALWAYS read existing files before modifying them (use read_file)
-- Write type-safe, well-structured code with clear variable names
-- Include brief inline comments for non-obvious logic (// WHY, not // WHAT)
-- Handle errors explicitly — no silent failures
-- Follow existing project conventions (detect them from the codebase)
-- Use write_file for code (requires user approval) and run_command for shell ops
+- ALWAYS explore the codebase first. Never design in a vacuum.
+- Prefer extending existing patterns over introducing new ones
+- Consider error handling, edge cases, and scaling from the start
+- Be specific: "Add a validateInput() function in src/utils/validation.ts" not "add validation"`,
 
-Never produce placeholder code. Every function should be complete and deployable.`,
+  coder: `You are the Coder — a Senior Engineer writing production-ready code.
 
-  reviewer: `You are the Code Reviewer agent — a Staff Engineer conducting thorough code reviews.
+WORKFLOW — always follow this:
+1. Use list_directory to understand the project structure
+2. Use read_file to read ALL relevant existing files before writing anything
+3. Use search_files to find existing patterns, imports, and conventions
+4. Write code that matches the existing style and conventions
+5. Use write_file or patch_file to implement changes
+6. Use run_command to verify your changes compile/work (e.g., npm run build, tsc --noEmit)
 
-Review checklist:
-1. Correctness: Does it do what it claims? Edge cases handled?
-2. Security: Input validation, injection risks, credential exposure?
-3. Performance: O(n²) in a hot path? Unnecessary allocations?
-4. Readability: Clear names, logical flow, adequate comments?
-5. Maintainability: DRY, appropriate abstractions, testability?
+Rules:
+- NEVER write code without reading the existing files first
+- Match the existing code style exactly (indentation, naming conventions, patterns)
+- Handle errors explicitly — no silent failures, no empty catch blocks
+- Every function must be complete and deployable — no TODOs, no placeholders
+- Use patch_file for small changes to existing files, write_file for new files
+- After writing code, run the build/type-check to verify it compiles`,
 
-Format your feedback as specific, actionable items with line references.
-Use severity levels: 🔴 Critical, 🟡 Suggestion, 🟢 Nitpick.
-Always explain WHY something should change, not just that it should.`,
+  reviewer: `You are the Code Reviewer — a Staff Engineer conducting thorough code reviews.
 
-  tester: `You are the Tester agent — a Senior QA Engineer creating comprehensive test suites.
+WORKFLOW — always follow this:
+1. Use read_file to read every file mentioned in the task
+2. Use search_files to find related code (callers, tests, similar patterns)
+3. Analyze the code systematically using this checklist
+4. Provide specific, actionable feedback with line numbers
 
-Strategy:
-- Write tests that verify behavior, not implementation details
-- Cover the happy path, edge cases, and error paths
-- Use descriptive test names: "should return 404 when user ID does not exist"
-- Mock external dependencies, test internal logic directly
-- Aim for meaningful coverage — 100% line coverage is less valuable than testing critical paths
+REVIEW CHECKLIST:
+🔴 CRITICAL (must fix):
+- Logic errors, off-by-one errors, null/undefined access
+- Security: injection, XSS, CSRF, auth bypass, secrets in code
+- Data loss: race conditions, unchecked mutations, missing transactions
+- Memory leaks: unclosed resources, missing cleanup, growing collections
 
-Use tools to read source files, then create test files with write_file.
-Run tests with run_command to verify they pass.`,
+🟡 IMPORTANT (should fix):
+- Error handling: missing catch, generic catches, swallowed errors
+- Performance: O(n²) in hot paths, unnecessary re-renders, missing memoization
+- Type safety: type assertions (as), any types, unchecked casts
+- Missing validation at system boundaries (user input, API responses)
 
-  qa: `You are the QA Validator agent — ensuring production-grade quality standards.
+🟢 SUGGESTIONS:
+- Naming clarity, code organization, DRY violations
+- Missing tests for critical paths
+- Documentation gaps for public APIs
 
-Validation areas:
-- Error handling: Are all failure modes handled gracefully?
-- Edge cases: Empty inputs, null values, concurrent access, network failures?
-- Security: Is user input sanitized? Are secrets exposed?
-- Accessibility: Can keyboard-only users navigate the flow?
-- Standards: Does it follow the project's established patterns?
+Format each finding as:
+[SEVERITY] file:line — Issue description
+  WHY: explanation of the impact
+  FIX: specific code change to make
 
-Provide a structured quality report with pass/fail status for each area.`,
+Always read the ACTUAL code. Never review based on assumptions.`,
 
-  documenter: `You are the Documenter agent — writing clear, comprehensive documentation.
+  tester: `You are the Tester — a Senior QA Engineer creating comprehensive test suites.
+
+WORKFLOW — always follow this:
+1. Use read_file to read the source code you're testing
+2. Use search_files to find existing test files and test patterns
+3. Identify all testable behaviors: happy path, edge cases, error paths
+4. Write tests using the project's existing test framework
+5. Use write_file to create test files
+6. Use run_command to run the tests and verify they pass
+
+TEST STRATEGY:
+- Happy path: normal inputs produce expected outputs
+- Edge cases: empty strings, zero, negative numbers, very large inputs, Unicode
+- Error paths: invalid inputs, network failures, missing files, permission denied
+- Boundary conditions: array boundaries, integer limits, timeout thresholds
+- Integration: components work together correctly
+
+Rules:
+- Test behavior, not implementation details
+- Descriptive test names: "should return 404 when user ID does not exist"
+- Each test should be independent — no shared mutable state
+- After writing tests, RUN them to verify they pass
+- If tests fail, fix them and re-run`,
+
+  qa: `You are the QA Validator — a meticulous quality engineer who catches what others miss.
+
+WORKFLOW — always follow this:
+1. Use read_file to read all relevant source files
+2. Use search_files to find error handling patterns, edge cases, TODOs
+3. Use run_command to run linters, type checkers, and tests
+4. Systematically validate each quality area below
+
+QUALITY CHECKLIST:
+
+ERROR HANDLING:
+- Are all async operations wrapped in try-catch?
+- Are errors logged with enough context to debug?
+- Do error messages help the user understand what went wrong?
+- Are resources cleaned up on failure (finally blocks, dispose patterns)?
+
+EDGE CASES:
+- What happens with empty/null/undefined inputs?
+- What about very large inputs? Concurrent access?
+- What if the network fails mid-operation?
+- What if a file doesn't exist or isn't readable?
+
+SECURITY:
+- Is user input validated and sanitized before use?
+- Are secrets/API keys stored securely (not in code, not logged)?
+- Are there any command injection, path traversal, or XSS vectors?
+- Are dependencies up to date? Any known vulnerabilities?
+
+TYPE SAFETY:
+- Are there any 'as' type assertions that could fail?
+- Are function inputs/outputs properly typed?
+- Are there any implicit 'any' types?
+
+Run concrete commands to verify:
+- Type check: npx tsc --noEmit
+- Lint: npx eslint . (if configured)
+- Tests: npm test (if configured)
+
+Output a structured quality report with PASS/FAIL for each area.`,
+
+  documenter: `You are the Documenter — writing clear, accurate documentation.
+
+WORKFLOW — always follow this:
+1. Use read_file to read the actual source code
+2. Use list_directory to understand the project structure
+3. Use search_files to find existing docs, README, and comments
+4. Generate documentation that matches the actual code (not assumptions)
 
 Documentation standards:
-- READMEs should answer: What is this? How do I set it up? How do I use it?
-- API docs: Every public function/endpoint gets params, return type, and an example
-- Include "Quick Start" sections for beginners AND "Advanced Usage" for power users
-- Code examples should be copy-pasteable and complete
-- Use consistent formatting and terminology
+- README: What is this? → Quick start → Usage → API reference → Contributing
+- API docs: Every public function gets description, params, return type, example
+- Code examples must be copy-pasteable and actually work
+- Use the project's existing documentation style and format
 
-Read the source code to generate accurate, up-to-date documentation.`,
+Rules:
+- Read the code FIRST. Never document from imagination.
+- Include realistic examples with actual values from the codebase
+- Note prerequisites, environment variables, and gotchas`,
 
-  deployer: `You are the Deployer agent — a DevOps/Platform Engineer handling builds and releases.
+  deployer: `You are the Deployer — a DevOps/Platform Engineer handling builds and releases.
+
+WORKFLOW — always follow this:
+1. Use read_file to read existing build configs (package.json, Dockerfile, CI configs)
+2. Use list_directory to find deployment-related files
+3. Use search_files to find environment variables, secrets references, build scripts
+4. Make changes and verify with run_command
 
 Approach:
-- Prefer reproducible builds (lockfiles, pinned versions, deterministic configs)
-- Include health checks and rollback strategies
-- Document environment variables and required secrets
-- Use run_command for build operations (requires user approval)
+- Reproducible builds: lockfiles, pinned versions, deterministic configs
+- Include health checks, rollback strategies, and monitoring
+- Document all environment variables and required secrets
+- Test builds locally before deploying
 - Consider multi-platform compatibility (macOS, Windows, Linux)
 
-Always verify builds succeed before reporting completion.`,
+Always verify builds succeed with run_command before reporting completion.`,
 };
 
 
-// ── Agent Node Factory ────────────────────────
+// ── Agentic Tool Loop ────────────────────────
 
-type StepCallback = (step: AgentStep) => void;
-type ApprovalCallback = (approval: PendingApproval) => Promise<boolean>;
+const MAX_TOOL_ITERATIONS = 15;
 
 /**
- * Creates an agent execution function.
- * Each agent has its own system prompt, tools, and LLM instance.
+ * Executes an agent with a full tool-calling loop.
+ * The agent calls the LLM, which may request tool calls.
+ * Tools are executed and results fed back to the LLM.
+ * This repeats until the LLM produces a final text response.
  */
-function createAgentNode(
+async function executeAgentLoop(
   role: AgentRole,
+  messages: BaseMessage[],
   config: LLMConfig,
   apiKeys: ApiKeys,
-  onStep: StepCallback,
-  onApproval: ApprovalCallback
-) {
-  return async (task: string, context: string = ""): Promise<string> => {
-    const agentInfo = AGENTS[role];
-    const stepId = `step-${role}-${Date.now()}`;
-    const startTime = Date.now();
+  onStep: (step: AgentStep) => void,
+  onApproval: (approval: PendingApproval) => Promise<boolean>
+): Promise<string> {
+  const agentInfo = AGENTS[role];
+  const stepId = `step-${role}-${Date.now()}`;
+  const startTime = Date.now();
 
-    // Report that agent is thinking
-    onStep({
-      id: stepId,
-      agentRole: role,
-      action: `${agentInfo.name} is analyzing the task...`,
-      status: "thinking",
-      timestamp: Date.now(),
+  onStep({
+    id: stepId,
+    agentRole: role,
+    action: `${agentInfo.name} is analyzing the task...`,
+    status: "thinking",
+    timestamp: Date.now(),
+  });
+
+  try {
+    const model = createChatModel(config, apiKeys);
+    const tools = createAgentTools(role, onApproval, (output) => {
+      onStep({
+        id: `${stepId}-tool-${Date.now()}`,
+        agentRole: role,
+        action: output,
+        status: "working",
+        timestamp: Date.now(),
+      });
     });
 
+    // Build tool map for execution
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const toolMap = new Map<string, any>(tools.map((t) => [t.name, t]));
+
+    // Try binding tools to the model
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let modelWithTools: any = model;
     try {
-      const model = createChatModel(config, apiKeys);
+      const bound = model.bindTools?.(tools);
+      modelWithTools = bound || model;
+    } catch {
+      modelWithTools = model;
+    }
 
-      // Create tools with approval callback
-      const tools = createAgentTools(role, onApproval, (output) => {
-        onStep({
-          id: `${stepId}-tool`,
-          agentRole: role,
-          action: output,
-          status: "working",
-          timestamp: Date.now(),
-        });
-      });
+    let currentMessages = [...messages];
+    let iterations = 0;
 
-      // Build messages
-      const messages: BaseMessage[] = [
-        new SystemMessage(AGENT_PROMPTS[role]),
-      ];
+    // Tool-calling loop
+    while (iterations < MAX_TOOL_ITERATIONS) {
+      iterations++;
 
-      if (context) {
-        messages.push(new SystemMessage(`Context from other agents:\n${context}`));
-      }
-
-      messages.push(new HumanMessage(task));
-
-      // Update status to working
       onStep({
         id: stepId,
         agentRole: role,
-        action: `${agentInfo.name} is working...`,
+        action: iterations === 1
+          ? `${agentInfo.name} is working...`
+          : `${agentInfo.name} is continuing (step ${iterations})...`,
         status: "working",
         timestamp: Date.now(),
       });
 
-      // Call the model (with tool binding if supported)
-      let response;
-      try {
-        const modelWithTools = model.bindTools?.(tools);
-        if (modelWithTools) {
-          response = await modelWithTools.invoke(messages);
-        } else {
-          response = await model.invoke(messages);
-        }
-      } catch {
-        // Fallback: invoke without tools
-        response = await model.invoke(messages);
-      }
+      const response = await modelWithTools.invoke(currentMessages);
+      currentMessages.push(response);
 
-      const result =
-        typeof response.content === "string"
+      // Check if the model requested tool calls
+      const toolCalls = response.tool_calls;
+      if (!toolCalls || toolCalls.length === 0) {
+        // No tool calls — final response
+        const result = typeof response.content === "string"
           ? response.content
           : JSON.stringify(response.content);
 
-      // Report completion
-      onStep({
-        id: stepId,
-        agentRole: role,
-        action: `${agentInfo.name} completed task`,
-        status: "done",
-        output: result,
-        timestamp: Date.now(),
-        duration: Date.now() - startTime,
-      });
+        onStep({
+          id: stepId,
+          agentRole: role,
+          action: `${agentInfo.name} completed task`,
+          status: "done",
+          output: result,
+          timestamp: Date.now(),
+          duration: Date.now() - startTime,
+        });
 
-      return result;
-    } catch (err) {
-      const error = err instanceof Error ? err.message : "Unknown error";
+        return result;
+      }
 
-      onStep({
-        id: stepId,
-        agentRole: role,
-        action: `${agentInfo.name} encountered an error: ${error}`,
-        status: "error",
-        timestamp: Date.now(),
-      });
+      // Execute each tool call
+      for (const toolCall of toolCalls) {
+        const toolFn = toolMap.get(toolCall.name);
+        if (!toolFn) {
+          currentMessages.push(
+            new ToolMessage({
+              tool_call_id: toolCall.id || toolCall.name,
+              content: `Error: Unknown tool "${toolCall.name}"`,
+            })
+          );
+          continue;
+        }
 
-      return `Error: ${error}`;
+        onStep({
+          id: `${stepId}-tool-${Date.now()}`,
+          agentRole: role,
+          action: `Using tool: ${toolCall.name}`,
+          status: "working",
+          timestamp: Date.now(),
+        });
+
+        try {
+          const toolResult = await (toolFn as any).invoke(toolCall.args);
+          currentMessages.push(
+            new ToolMessage({
+              tool_call_id: toolCall.id || toolCall.name,
+              content: typeof toolResult === "string" ? toolResult : JSON.stringify(toolResult),
+            })
+          );
+        } catch (err) {
+          currentMessages.push(
+            new ToolMessage({
+              tool_call_id: toolCall.id || toolCall.name,
+              content: `Tool error: ${err instanceof Error ? err.message : String(err)}`,
+            })
+          );
+        }
+      }
     }
-  };
+
+    // Max iterations reached — get final response without tools
+    const finalResponse = await model.invoke(currentMessages);
+    const result = typeof finalResponse.content === "string"
+      ? finalResponse.content
+      : JSON.stringify(finalResponse.content);
+
+    onStep({
+      id: stepId,
+      agentRole: role,
+      action: `${agentInfo.name} completed task (max iterations reached)`,
+      status: "done",
+      output: result,
+      timestamp: Date.now(),
+      duration: Date.now() - startTime,
+    });
+
+    return result;
+  } catch (err) {
+    const error = err instanceof Error ? err.message : "Unknown error";
+
+    onStep({
+      id: stepId,
+      agentRole: role,
+      action: `${agentInfo.name} encountered an error: ${error}`,
+      status: "error",
+      timestamp: Date.now(),
+    });
+
+    return `Error: ${error}`;
+  }
 }
+
 
 // ── Supervisor Graph ──────────────────────────
 
@@ -257,24 +409,16 @@ interface SupervisorPlan {
 
 /**
  * Parses the supervisor's plan from its text response.
- * Extracts agent assignments and task descriptions.
  */
 function parseSupervisorPlan(response: string): SupervisorPlan {
   const lines = response.split("\n");
   const steps: SupervisorPlan["steps"] = [];
 
   const validAgents = new Set<string>([
-    "architect",
-    "coder",
-    "reviewer",
-    "tester",
-    "qa",
-    "documenter",
-    "deployer",
+    "architect", "coder", "reviewer", "tester", "qa", "documenter", "deployer",
   ]);
 
   for (const line of lines) {
-    // Match patterns like "1. coder: Write the function"
     const match = line.match(/^\d+\.\s*(\w+):\s*(.+)/);
     if (match) {
       const [, agent, task] = match;
@@ -288,12 +432,8 @@ function parseSupervisorPlan(response: string): SupervisorPlan {
     }
   }
 
-  // Fallback: if no plan was parsed, use coder as default
   if (steps.length === 0) {
-    steps.push({
-      agent: "coder",
-      task: response,
-    });
+    steps.push({ agent: "coder", task: response });
   }
 
   return { steps };
@@ -302,31 +442,30 @@ function parseSupervisorPlan(response: string): SupervisorPlan {
 /**
  * Runs the complete multi-agent workflow:
  * 1. Supervisor creates a plan
- * 2. Agents execute in sequence (or parallel groups)
+ * 2. Agents execute with full tool-calling loops
  * 3. Supervisor synthesizes final result
  */
 export async function runAgentWorkflow(
   query: string,
   config: LLMConfig,
   apiKeys: ApiKeys,
-  onStep: StepCallback,
-  onApproval: ApprovalCallback
+  onStep: (step: AgentStep) => void,
+  onApproval: (approval: PendingApproval) => Promise<boolean>
 ): Promise<string> {
   // ── Step 1: Supervisor creates the plan ──
-  const supervisor = createAgentNode(
-    "supervisor",
-    config,
-    apiKeys,
-    onStep,
-    onApproval
-  );
+  const supervisorMessages: BaseMessage[] = [
+    new SystemMessage(AGENT_PROMPTS.supervisor),
+    new HumanMessage(query),
+  ];
 
-  const plan = await supervisor(query);
+  const plan = await executeAgentLoop(
+    "supervisor", supervisorMessages, config, apiKeys, onStep, onApproval
+  );
   const parsedPlan = parseSupervisorPlan(plan);
 
   // ── Step 2: Execute agent tasks ──
   const results: Record<string, string> = {};
-  let accumulatedContext = `User query: ${query}\n\nSupervisor plan: ${plan}`;
+  let accumulatedContext = `User query: ${query}\n\nSupervisor plan:\n${plan}`;
 
   // Group parallel tasks
   const groups: Array<Array<{ agent: AgentRole; task: string }>> = [];
@@ -346,20 +485,30 @@ export async function runAgentWorkflow(
     groups.push(currentGroup);
   }
 
-  // Execute each group (parallel within group, sequential across groups)
+  // Execute each group
   for (const group of groups) {
     if (group.length === 1) {
-      // Sequential execution
       const { agent, task } = group[0];
-      const agentFn = createAgentNode(agent, config, apiKeys, onStep, onApproval);
-      const result = await agentFn(task, accumulatedContext);
+      const messages: BaseMessage[] = [
+        new SystemMessage(AGENT_PROMPTS[agent]),
+        new SystemMessage(`Context from the workflow so far:\n${accumulatedContext}`),
+        new HumanMessage(task),
+      ];
+      const result = await executeAgentLoop(
+        agent, messages, config, apiKeys, onStep, onApproval
+      );
       results[agent] = result;
       accumulatedContext += `\n\n${AGENTS[agent].name} result:\n${result}`;
     } else {
-      // Parallel execution
       const promises = group.map(async ({ agent, task }) => {
-        const agentFn = createAgentNode(agent, config, apiKeys, onStep, onApproval);
-        const result = await agentFn(task, accumulatedContext);
+        const messages: BaseMessage[] = [
+          new SystemMessage(AGENT_PROMPTS[agent]),
+          new SystemMessage(`Context from the workflow so far:\n${accumulatedContext}`),
+          new HumanMessage(task),
+        ];
+        const result = await executeAgentLoop(
+          agent, messages, config, apiKeys, onStep, onApproval
+        );
         return { agent, result };
       });
 
@@ -372,15 +521,24 @@ export async function runAgentWorkflow(
   }
 
   // ── Step 3: Supervisor synthesizes final result ──
-  const summaryQuery = `
-The agents have completed their tasks. Here are the results:
+  const summaryMessages: BaseMessage[] = [
+    new SystemMessage(AGENT_PROMPTS.supervisor),
+    new HumanMessage(query),
+    new AIMessage(plan),
+    new HumanMessage(`The agents have completed their tasks. Here are the results:
 
 ${Object.entries(results)
-  .map(([agent, result]) => `### ${AGENTS[agent as AgentRole].name}\n${result}`)
+  .map(([agent, result]) => {
+    const role = agent as AgentRole;
+    return `### ${AGENTS[role].name}\n${result}`;
+  })
   .join("\n\n")}
 
-Please provide a comprehensive summary of what was accomplished and any next steps.`;
+Provide a comprehensive summary: what was accomplished, issues found, and recommended next steps.`),
+  ];
 
-  const finalResult = await supervisor(summaryQuery);
+  const finalResult = await executeAgentLoop(
+    "supervisor", summaryMessages, config, apiKeys, onStep, onApproval
+  );
   return finalResult;
 }

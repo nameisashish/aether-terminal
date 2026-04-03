@@ -58,39 +58,13 @@ jobs:
         run: pnpm install
 
       - name: Build Tauri app
-        id: tauri_build
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'Aether Terminal ${{ github.ref_name }}'
-          releaseBody: 'Download Aether Terminal for your platform below.'
+          releaseBody: 'Download Aether Terminal for your platform below. Developed by ASHISH KISHORE.'
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
-
-      - name: Upload artifacts to public landing repo release
-        uses: softprops/action-gh-release@v2
-        with:
-          repository: nameisashish/aether-landing
-          tag_name: ${{ github.ref_name }}
-          name: 'Aether Terminal ${{ github.ref_name }}'
-          body: |
-            ## Download Aether Terminal
-
-            Choose the right file for your OS:
-            - **macOS (Apple Silicon)** — `.dmg` file with `aarch64`
-            - **macOS (Intel)** — `.dmg` file with `x64`
-            - **Windows** — `.exe` file
-            - **Linux** — `.AppImage` or `.deb` file
-
-            Developed by **ASHISH KISHORE**
-          files: |
-            src-tauri/target/release/bundle/**/*.dmg
-            src-tauri/target/release/bundle/**/*.exe
-            src-tauri/target/release/bundle/**/*.msi
-            src-tauri/target/release/bundle/**/*.AppImage
-            src-tauri/target/release/bundle/**/*.deb
-        env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}

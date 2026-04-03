@@ -31,6 +31,7 @@ pub fn run() {
             pty::write_pty,
             pty::resize_pty,
             pty::destroy_pty,
+            pty::get_home_dir,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Aether Terminal");

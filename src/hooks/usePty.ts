@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { Terminal } from "@xterm/xterm";
+import type { Terminal, IDisposable } from "@xterm/xterm";
 import { useTerminalStore } from "../stores/terminalStore";
 
 interface UsePtyOptions {
@@ -33,13 +33,19 @@ interface PtyCreatedResponse {
  */
 export function usePty({ tabId, terminal, rows, cols }: UsePtyOptions) {
   const ptyIdRef = useRef<string | null>(null);
+  const destroyedRef = useRef(false);
   const unlistenOutputRef = useRef<UnlistenFn | null>(null);
   const unlistenExitRef = useRef<UnlistenFn | null>(null);
+  const onDataDisposableRef = useRef<IDisposable | null>(null);
+  const onBinaryDisposableRef = useRef<IDisposable | null>(null);
   const { setPtyId, setConnected } = useTerminalStore();
 
   // ── Create PTY session ──
   const createPtySession = useCallback(async () => {
     if (!terminal) return;
+    // Guard: don't create if already destroyed or already has a session
+    if (destroyedRef.current) return;
+    if (ptyIdRef.current) return;
 
     try {
       // Invoke Rust command to create a PTY
@@ -50,6 +56,12 @@ export function usePty({ tabId, terminal, rows, cols }: UsePtyOptions) {
           cwd: null, // Use default home directory
         },
       });
+
+      // Guard: check if component was unmounted during async call
+      if (destroyedRef.current) {
+        invoke("destroy_pty", { id: response.id }).catch(() => {});
+        return;
+      }
 
       ptyIdRef.current = response.id;
       setPtyId(tabId, response.id);
@@ -73,26 +85,35 @@ export function usePty({ tabId, terminal, rows, cols }: UsePtyOptions) {
       );
 
       // Forward terminal input to PTY
-      terminal.onData((data) => {
-        if (ptyIdRef.current) {
+      onDataDisposableRef.current = terminal.onData((data) => {
+        if (ptyIdRef.current && !destroyedRef.current) {
           invoke("write_pty", {
             request: {
               id: ptyIdRef.current,
               data,
             },
-          }).catch(console.error);
+          }).catch((err) => {
+            console.error("PTY write error:", err);
+            if (!destroyedRef.current) {
+              terminal.write(
+                `\r\n\x1b[31m[PTY error: ${err}]\x1b[0m\r\n`
+              );
+            }
+          });
         }
       });
 
       // Handle binary data (for mouse events, etc.)
-      terminal.onBinary((data) => {
-        if (ptyIdRef.current) {
+      onBinaryDisposableRef.current = terminal.onBinary((data) => {
+        if (ptyIdRef.current && !destroyedRef.current) {
           invoke("write_pty", {
             request: {
               id: ptyIdRef.current,
               data,
             },
-          }).catch(console.error);
+          }).catch((err) => {
+            console.error("PTY binary write error:", err);
+          });
         }
       });
     } catch (err) {
@@ -106,7 +127,7 @@ export function usePty({ tabId, terminal, rows, cols }: UsePtyOptions) {
   // ── Resize PTY ──
   const resizePty = useCallback(
     async (newRows: number, newCols: number) => {
-      if (!ptyIdRef.current) return;
+      if (!ptyIdRef.current || destroyedRef.current) return;
       try {
         await invoke("resize_pty", {
           request: {
@@ -124,28 +145,43 @@ export function usePty({ tabId, terminal, rows, cols }: UsePtyOptions) {
 
   // ── Destroy PTY ──
   const destroyPty = useCallback(async () => {
-    if (!ptyIdRef.current) return;
-    try {
-      // Clean up event listeners
-      if (unlistenOutputRef.current) {
-        unlistenOutputRef.current();
-        unlistenOutputRef.current = null;
-      }
-      if (unlistenExitRef.current) {
-        unlistenExitRef.current();
-        unlistenExitRef.current = null;
-      }
+    destroyedRef.current = true;
 
-      await invoke("destroy_pty", { id: ptyIdRef.current });
+    // Clean up terminal input disposables
+    if (onDataDisposableRef.current) {
+      onDataDisposableRef.current.dispose();
+      onDataDisposableRef.current = null;
+    }
+    if (onBinaryDisposableRef.current) {
+      onBinaryDisposableRef.current.dispose();
+      onBinaryDisposableRef.current = null;
+    }
+
+    // Clean up event listeners
+    if (unlistenOutputRef.current) {
+      unlistenOutputRef.current();
+      unlistenOutputRef.current = null;
+    }
+    if (unlistenExitRef.current) {
+      unlistenExitRef.current();
+      unlistenExitRef.current = null;
+    }
+
+    // Destroy the backend PTY session
+    if (ptyIdRef.current) {
+      try {
+        await invoke("destroy_pty", { id: ptyIdRef.current });
+      } catch (err) {
+        console.error("Failed to destroy PTY:", err);
+      }
       ptyIdRef.current = null;
-    } catch (err) {
-      console.error("Failed to destroy PTY:", err);
     }
   }, []);
 
   // ── Create PTY on mount ──
   useEffect(() => {
     if (terminal) {
+      destroyedRef.current = false;
       createPtySession();
     }
 

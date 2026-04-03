@@ -1,10 +1,5 @@
-// ==========================================
-// File Explorer Component
-// Sidebar file tree with directory browsing
-// and file selection for AI context.
-// ==========================================
-
 import { useEffect, useCallback } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   FolderOpen,
@@ -61,13 +56,20 @@ export function FileExplorer() {
   // Load home dir on first open
   useEffect(() => {
     if (explorerOpen && !rootPath) {
-      // Default to home directory
-      const homeDir =
-        typeof window !== "undefined"
-          ? "/Users/" + (import.meta.env.VITE_USER || "user")
-          : "/home";
-      setRootPath(homeDir);
-      loadDirectory(homeDir);
+      // Get actual home directory from the Rust backend
+      invoke<string>("get_home_dir")
+        .then((homeDir) => {
+          setRootPath(homeDir);
+          loadDirectory(homeDir);
+        })
+        .catch(() => {
+          // Fallback for platforms where the command might fail
+          const fallback = navigator.platform.startsWith("Win")
+            ? "C:\\Users"
+            : "/home";
+          setRootPath(fallback);
+          loadDirectory(fallback);
+        });
     }
   }, [explorerOpen]);
 

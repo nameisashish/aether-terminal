@@ -232,3 +232,11 @@ fn get_default_shell() -> String {
         std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string())
     }
 }
+
+/// Returns the user's home directory (cross-platform)
+#[tauri::command]
+pub fn get_home_dir() -> Result<String, String> {
+    std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .map_err(|_| "Could not determine home directory".to_string())
+}

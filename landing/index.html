@@ -426,7 +426,7 @@
       <a href="#features">Features</a>
       <a href="#agents">Agents</a>
       <a href="#download">Download</a>
-      <a href="https://github.com/aether-terminal" target="_blank">GitHub</a>
+      <a href="https://github.com/nameisashish/aether-terminal" target="_blank">GitHub</a>
       <a href="#download" class="nav-cta">Download Now</a>
     </div>
   </nav>
@@ -445,7 +445,7 @@
       <a href="#download" class="btn-hero btn-primary">
         ⬇ Download for Free
       </a>
-      <a href="https://github.com/aether-terminal" class="btn-hero btn-outline" target="_blank">
+      <a href="https://github.com/nameisashish/aether-terminal" class="btn-hero btn-outline" target="_blank">
         ⭐ Star on GitHub
       </a>
     </div>
@@ -578,32 +578,75 @@
     <h2>Download Aether Terminal</h2>
     <p>Free and open source. Available for all platforms.</p>
     <div class="download-grid">
-      <a href="#" class="download-card">
+      <a id="download-mac" href="https://github.com/nameisashish/aether-terminal/releases/latest" class="download-card" target="_blank">
         <div class="os-icon">🍎</div>
         <h4>macOS</h4>
         <p>.dmg (Apple Silicon & Intel)</p>
       </a>
-      <a href="#" class="download-card">
+      <a id="download-win" href="https://github.com/nameisashish/aether-terminal/releases/latest" class="download-card" target="_blank">
         <div class="os-icon">🪟</div>
         <h4>Windows</h4>
         <p>.exe installer</p>
       </a>
-      <a href="#" class="download-card">
+      <a id="download-linux" href="https://github.com/nameisashish/aether-terminal/releases/latest" class="download-card" target="_blank">
         <div class="os-icon">🐧</div>
         <h4>Linux</h4>
         <p>.AppImage / .deb</p>
       </a>
     </div>
+    <p style="margin-top:1.5rem;opacity:0.5;font-size:0.85rem;">
+      All downloads available on the <a href="https://github.com/nameisashish/aether-terminal/releases" target="_blank" style="color:var(--accent);">GitHub Releases</a> page.
+    </p>
   </section>
 
   <!-- Footer -->
   <footer>
     <p>
-      Aether Terminal — Built with Tauri v2, React, xterm.js, and LangChain.
+      Aether Terminal — Developed by <strong>ASHISH KISHORE</strong>
       <br />
-      <a href="https://github.com/aether-terminal">GitHub</a> ·
+      Built with Tauri v2, React, xterm.js, and LangChain.
+      <br />
+      <a href="https://github.com/nameisashish/aether-terminal">GitHub</a> ·
       Default LLM: Groq + Llama 3.1 70B
     </p>
   </footer>
+
+  <script>
+    // Auto-detect OS and highlight the right download card
+    (function() {
+      var ua = navigator.userAgent.toLowerCase();
+      var highlight = null;
+      if (ua.indexOf('mac') !== -1) highlight = 'download-mac';
+      else if (ua.indexOf('win') !== -1) highlight = 'download-win';
+      else if (ua.indexOf('linux') !== -1) highlight = 'download-linux';
+
+      if (highlight) {
+        var el = document.getElementById(highlight);
+        if (el) el.style.borderColor = 'var(--accent)';
+      }
+
+      // Fetch latest release and set direct download links
+      fetch('https://api.github.com/repos/nameisashish/aether-terminal/releases/latest')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          if (!data.assets) return;
+          data.assets.forEach(function(asset) {
+            var name = asset.name.toLowerCase();
+            var url = asset.browser_download_url;
+            if (name.endsWith('.dmg')) {
+              document.getElementById('download-mac').href = url;
+            } else if (name.endsWith('.exe') || name.endsWith('.msi')) {
+              document.getElementById('download-win').href = url;
+            } else if (name.endsWith('.appimage') || name.endsWith('.deb')) {
+              var el = document.getElementById('download-linux');
+              if (el.href.indexOf('releases/latest') !== -1 || name.endsWith('.appimage')) {
+                el.href = url;
+              }
+            }
+          });
+        })
+        .catch(function() { /* fallback: links stay pointing to releases page */ });
+    })();
+  </script>
 </body>
 </html>
