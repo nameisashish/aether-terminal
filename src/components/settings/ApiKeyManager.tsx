@@ -21,6 +21,9 @@ export function ApiKeyManager() {
   const handleSave = (provider: LLMProvider) => {
     if (inputValue.trim()) {
       setApiKey(provider, inputValue.trim());
+      // Auto-select this provider and its best model when key is saved
+      const bestModel = PROVIDER_MODELS[provider][0];
+      setConfig({ provider, model: bestModel });
     }
     setEditingProvider(null);
     setInputValue("");
