@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Aether Terminal — AI-Native Terminal for Developers</title>
+  <meta name="description" content="The AI-native terminal with a full multi-agent dev team built in. Powered by Groq, OpenAI, Anthropic, Gemini, and xAI." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    /* ── Reset ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #06060b;
+      --surface: #0d0d15;
+      --card: #13131f;
+      --border: #1e1e30;
+      --text: #e4e4ef;
+      --muted: #8888a0;
+      --dim: #555570;
+      --accent: #7c5cfc;
+      --accent-light: #9b7dff;
+      --accent-muted: rgba(124, 92, 252, 0.12);
+      --green: #4ade80;
+      --red: #f87171;
+      --yellow: #fbbf24;
+      --blue: #60a5fa;
+      --cyan: #22d3ee;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+
+    /* ── Nav ── */
+    nav {
+      position: fixed;
+      top: 0;
+      width: 100%;
+      z-index: 100;
+      padding: 16px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: rgba(6, 6, 11, 0.8);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid rgba(30, 30, 48, 0.5);
+    }
+
+    .nav-brand {
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      color: var(--text);
+    }
+
+    .nav-brand span { color: var(--accent); }
+
+    .nav-links { display: flex; gap: 28px; align-items: center; }
+    .nav-links a {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+      transition: color 0.2s;
+    }
+    .nav-links a:hover { color: var(--text); }
+
+    .nav-cta {
+      padding: 8px 20px;
+      border-radius: 8px;
+      background: var(--accent);
+      color: white !important;
+      font-weight: 600;
+      font-size: 13px;
+      transition: background 0.2s;
+    }
+    .nav-cta:hover { background: var(--accent-light); }
+
+    /* ── Hero ── */
+    .hero {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 120px 24px 80px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hero::before {
+      content: '';
+      position: absolute;
+      top: -200px;
+      width: 800px;
+      height: 800px;
+      background: radial-gradient(circle, rgba(124, 92, 252, 0.08) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      border-radius: 100px;
+      background: var(--accent-muted);
+      border: 1px solid rgba(124, 92, 252, 0.2);
+      font-size: 13px;
+      color: var(--accent-light);
+      font-weight: 500;
+      margin-bottom: 32px;
+      animation: fadeInUp 0.6s ease;
+    }
+
+    .hero h1 {
+      font-size: clamp(40px, 6vw, 72px);
+      font-weight: 800;
+      line-height: 1.1;
+      margin-bottom: 24px;
+      animation: fadeInUp 0.6s ease 0.1s both;
+    }
+
+    .hero h1 .gradient {
+      background: linear-gradient(135deg, var(--accent), var(--cyan), var(--accent-light));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .hero p {
+      font-size: 18px;
+      color: var(--muted);
+      max-width: 560px;
+      line-height: 1.6;
+      margin-bottom: 40px;
+      animation: fadeInUp 0.6s ease 0.2s both;
+    }
+
+    .hero-buttons {
+      display: flex;
+      gap: 12px;
+      animation: fadeInUp 0.6s ease 0.3s both;
+    }
+
+    .btn-hero {
+      padding: 14px 28px;
+      border-radius: 12px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: white;
+      box-shadow: 0 4px 24px rgba(124, 92, 252, 0.3);
+    }
+    .btn-primary:hover {
+      background: var(--accent-light);
+      transform: translateY(-1px);
+      box-shadow: 0 8px 32px rgba(124, 92, 252, 0.4);
+    }
+
+    .btn-outline {
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-outline:hover {
+      background: var(--card);
+      border-color: var(--accent);
+    }
+
+    /* ── Terminal Preview ── */
+    .terminal-preview {
+      max-width: 900px;
+      width: 100%;
+      margin: 60px auto 0;
+      border-radius: 16px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      box-shadow: 0 32px 64px rgba(0, 0, 0, 0.4);
+      animation: fadeInUp 0.8s ease 0.4s both;
+    }
+
+    .terminal-preview-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 16px;
+      background: var(--card);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .dot { width: 12px; height: 12px; border-radius: 50%; }
+    .dot-red { background: #ff5f57; }
+    .dot-yellow { background: #febc2e; }
+    .dot-green { background: #28c840; }
+
+    .terminal-preview-bar span {
+      margin-left: 12px;
+      font-size: 12px;
+      color: var(--dim);
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .terminal-preview-body {
+      padding: 24px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 14px;
+      line-height: 1.8;
+      min-height: 200px;
+    }
+
+    .prompt { color: var(--green); }
+    .cmd { color: var(--text); }
+    .output { color: var(--muted); }
+    .ai-tag { color: var(--accent); font-weight: 600; }
+
+    /* ── Features ── */
+    .features {
+      padding: 120px 24px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .features h2 {
+      text-align: center;
+      font-size: 36px;
+      font-weight: 700;
+      margin-bottom: 16px;
+    }
+
+    .features > p {
+      text-align: center;
+      color: var(--muted);
+      font-size: 16px;
+      margin-bottom: 60px;
+    }
+
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 20px;
+    }
+
+    .feature-card {
+      padding: 28px;
+      border-radius: 16px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      transition: all 0.3s;
+    }
+
+    .feature-card:hover {
+      border-color: var(--accent);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 32px rgba(124, 92, 252, 0.1);
+    }
+
+    .feature-icon {
+      font-size: 28px;
+      margin-bottom: 16px;
+    }
+
+    .feature-card h3 {
+      font-size: 17px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    .feature-card p {
+      font-size: 14px;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    /* ── Agents Section ── */
+    .agents {
+      padding: 100px 24px;
+      background: var(--surface);
+    }
+
+    .agents h2 {
+      text-align: center;
+      font-size: 36px;
+      font-weight: 700;
+      margin-bottom: 16px;
+    }
+
+    .agents > p {
+      text-align: center;
+      color: var(--muted);
+      font-size: 16px;
+      margin-bottom: 60px;
+      max-width: 600px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .agent-grid {
+      max-width: 900px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 12px;
+    }
+
+    .agent-card {
+      padding: 16px 20px;
+      border-radius: 12px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      transition: all 0.2s;
+    }
+
+    .agent-card:hover {
+      border-color: var(--accent);
+      background: rgba(124, 92, 252, 0.04);
+    }
+
+    .agent-emoji { font-size: 24px; }
+    .agent-info h4 { font-size: 13px; font-weight: 600; }
+    .agent-info p { font-size: 11px; color: var(--dim); margin-top: 2px; }
+
+    /* ── Download Section ── */
+    .download {
+      padding: 100px 24px;
+      text-align: center;
+    }
+
+    .download h2 {
+      font-size: 36px;
+      font-weight: 700;
+      margin-bottom: 16px;
+    }
+
+    .download > p {
+      color: var(--muted);
+      font-size: 16px;
+      margin-bottom: 48px;
+    }
+
+    .download-grid {
+      max-width: 700px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+    }
+
+    .download-card {
+      padding: 28px 20px;
+      border-radius: 16px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      text-align: center;
+      text-decoration: none;
+      color: var(--text);
+      transition: all 0.2s;
+    }
+
+    .download-card:hover {
+      border-color: var(--accent);
+      transform: translateY(-2px);
+    }
+
+    .download-card .os-icon { font-size: 32px; margin-bottom: 12px; }
+    .download-card h4 { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+    .download-card p { font-size: 12px; color: var(--dim); }
+
+    /* ── Footer ── */
+    footer {
+      padding: 40px 24px;
+      text-align: center;
+      border-top: 1px solid var(--border);
+      color: var(--dim);
+      font-size: 13px;
+    }
+
+    footer a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    /* ── Animations ── */
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 768px) {
+      .nav-links { display: none; }
+      .feature-grid { grid-template-columns: 1fr; }
+      .download-grid { grid-template-columns: 1fr; }
+      .agent-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+  </style>
+</head>
+<body>
+  <!-- Navigation -->
+  <nav>
+    <div class="nav-brand"><span>AETHER</span> Terminal</div>
+    <div class="nav-links">
+      <a href="#features">Features</a>
+      <a href="#agents">Agents</a>
+      <a href="#download">Download</a>
+      <a href="https://github.com/aether-terminal" target="_blank">GitHub</a>
+      <a href="#download" class="nav-cta">Download Now</a>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="hero-badge">✨ Powered by Groq + Llama 3.1 70B</div>
+    <h1>
+      Your Entire Dev Team<br />
+      <span class="gradient">Inside a Terminal</span>
+    </h1>
+    <p>
+      Aether Terminal is an AI-native terminal with 8 specialized agents — an architect, coder, reviewer, tester, and more — all working together to build, test, and deploy your code.
+    </p>
+    <div class="hero-buttons">
+      <a href="#download" class="btn-hero btn-primary">
+        ⬇ Download for Free
+      </a>
+      <a href="https://github.com/aether-terminal" class="btn-hero btn-outline" target="_blank">
+        ⭐ Star on GitHub
+      </a>
+    </div>
+
+    <!-- Terminal Preview -->
+    <div class="terminal-preview">
+      <div class="terminal-preview-bar">
+        <div class="dot dot-red"></div>
+        <div class="dot dot-yellow"></div>
+        <div class="dot dot-green"></div>
+        <span>aether — zsh — 120×40</span>
+      </div>
+      <div class="terminal-preview-body">
+        <div><span class="prompt">~/projects ❯</span> <span class="cmd">aether agent "Build a REST API with auth"</span></div>
+        <div><span class="ai-tag">[AI]</span> <span class="output">🎯 Supervisor: Analyzing task, assigning to agents...</span></div>
+        <div><span class="ai-tag">[AI]</span> <span class="output">🏗️ Architect: Designing API structure with JWT auth...</span></div>
+        <div><span class="ai-tag">[AI]</span> <span class="output">💻 Coder: Writing Express routes and middleware...</span></div>
+        <div><span class="ai-tag">[AI]</span> <span class="output">🔍 Reviewer: Checking code quality and security...</span></div>
+        <div><span class="ai-tag">[AI]</span> <span class="output">🧪 Tester: Creating unit tests with 94% coverage...</span></div>
+        <div><span class="ai-tag">[AI]</span> <span class="output">✅ All agents complete. 12 files created, all tests passing.</span></div>
+        <div><span class="prompt">~/projects ❯</span> <span class="cmd" style="opacity:0.4">▌</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features -->
+  <section class="features" id="features">
+    <h2>Built Different</h2>
+    <p>Everything you need in a terminal, plus an entire AI dev team.</p>
+    <div class="feature-grid">
+      <div class="feature-card">
+        <div class="feature-icon">⚡</div>
+        <h3>Real PTY Terminal</h3>
+        <p>Full pseudoterminal with ANSI colors, vim/tmux support, mouse events, and native shell integration. Feels like your system terminal.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🤖</div>
+        <h3>Multi-Provider AI</h3>
+        <p>Groq (default), OpenAI, Anthropic Claude, Google Gemini, and xAI Grok. Switch providers and models instantly.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">👥</div>
+        <h3>8-Agent Team</h3>
+        <p>Supervisor, Architect, Coder, Reviewer, Tester, QA, Documenter, and Deployer — all working in parallel on your tasks.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🛡️</div>
+        <h3>Human-in-the-Loop</h3>
+        <p>Every file write and shell command requires your explicit approval. Full control, zero surprises.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🗂️</div>
+        <h3>File Explorer</h3>
+        <p>Built-in file tree with AI context selection. Select files to give your agents full project awareness.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">💻</div>
+        <h3>Cross-Platform</h3>
+        <p>Built with Tauri v2 for native performance. Available on macOS, Windows, and Linux.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Agents -->
+  <section class="agents" id="agents">
+    <h2>Meet Your Agent Team</h2>
+    <p>8 specialized AI agents, orchestrated by a supervisor, working together to tackle any development task.</p>
+    <div class="agent-grid">
+      <div class="agent-card">
+        <span class="agent-emoji">🎯</span>
+        <div class="agent-info">
+          <h4>Supervisor</h4>
+          <p>Orchestrates the team</p>
+        </div>
+      </div>
+      <div class="agent-card">
+        <span class="agent-emoji">🏗️</span>
+        <div class="agent-info">
+          <h4>Architect</h4>
+          <p>Designs systems</p>
+        </div>
+      </div>
+      <div class="agent-card">
+        <span class="agent-emoji">💻</span>
+        <div class="agent-info">
+          <h4>Coder</h4>
+          <p>Writes production code</p>
+        </div>
+      </div>
+      <div class="agent-card">
+        <span class="agent-emoji">🔍</span>
+        <div class="agent-info">
+          <h4>Code Reviewer</h4>
+          <p>Reviews quality</p>
+        </div>
+      </div>
+      <div class="agent-card">
+        <span class="agent-emoji">🧪</span>
+        <div class="agent-info">
+          <h4>Tester</h4>
+          <p>Creates & runs tests</p>
+        </div>
+      </div>
+      <div class="agent-card">
+        <span class="agent-emoji">✅</span>
+        <div class="agent-info">
+          <h4>QA Validator</h4>
+          <p>Validates quality</p>
+        </div>
+      </div>
+      <div class="agent-card">
+        <span class="agent-emoji">📝</span>
+        <div class="agent-info">
+          <h4>Documenter</h4>
+          <p>Writes documentation</p>
+        </div>
+      </div>
+      <div class="agent-card">
+        <span class="agent-emoji">🚀</span>
+        <div class="agent-info">
+          <h4>Deployer</h4>
+          <p>Handles deployment</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Download -->
+  <section class="download" id="download">
+    <h2>Download Aether Terminal</h2>
+    <p>Free and open source. Available for all platforms.</p>
+    <div class="download-grid">
+      <a href="#" class="download-card">
+        <div class="os-icon">🍎</div>
+        <h4>macOS</h4>
+        <p>.dmg (Apple Silicon & Intel)</p>
+      </a>
+      <a href="#" class="download-card">
+        <div class="os-icon">🪟</div>
+        <h4>Windows</h4>
+        <p>.exe installer</p>
+      </a>
+      <a href="#" class="download-card">
+        <div class="os-icon">🐧</div>
+        <h4>Linux</h4>
+        <p>.AppImage / .deb</p>
+      </a>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <p>
+      Aether Terminal — Built with Tauri v2, React, xterm.js, and LangChain.
+      <br />
+      <a href="https://github.com/aether-terminal">GitHub</a> ·
+      Default LLM: Groq + Llama 3.1 70B
+    </p>
+  </footer>
+</body>
+</html>

@@ -1,0 +1,39 @@
+# ── Dependencies ──
+node_modules/
+.pnpm-store/
+
+# ── Build output ──
+dist/
+dist-ssr/
+
+# ── Tauri build output ──
+src-tauri/target/
+src-tauri/gen/
+
+# ── IDE / Editor ──
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# ── Environment / Secrets ──
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+
+# ── Tauri plugin store (contains API keys) ──
+*.store
+
+# ── Debug ──
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ── OS ──
+Thumbs.db
+.DS_Store
