@@ -25,7 +25,7 @@ import { useWorkspaceStore } from "../../stores/workspaceStore";
 
 export function MainLayout() {
   const { tabs, activeTabId, addTab } = useTerminalStore();
-  const { aiMode, toggleAiMode, chatPanelOpen } = useAiStore();
+  const { aiMode, toggleAiMode, chatPanelOpen, initializeStore } = useAiStore();
   const { dashboardOpen, setDashboardOpen } = useAgentStore();
   const { explorerOpen, setExplorerOpen } = useFileStore();
   const { openFilePath } = useWorkspaceStore();
@@ -37,6 +37,11 @@ export function MainLayout() {
       const tab = createTab();
       addTab(tab);
     }
+  }, []);
+
+  // ── Initialize AI store: hydrate persisted keys/config + auto-detect Ollama models ──
+  useEffect(() => {
+    initializeStore();
   }, []);
 
   const isViewingFile = !!openFilePath;

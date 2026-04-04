@@ -6,12 +6,15 @@
 // KEY UPGRADE: AI now has tool-calling capability
 // and full codebase access. It can read/write
 // files, run commands, and delegate to agents.
+//
+// PERSISTENCE: API keys and config are saved to
+// localStorage so they survive app restarts.
 // ==========================================
 
 import { create } from "zustand";
 import type { LLMConfig, ChatMessage, ApiKeys, LLMProvider } from "../lib/llm/types";
 import { DEFAULT_LLM_CONFIG, GROQ_FALLBACK_CONFIG } from "../lib/llm/types";
-import { streamChat, testOllamaConnection } from "../lib/llm/providers";
+import { streamChat, testOllamaConnection, getOllamaModels } from "../lib/llm/providers";
 import { createChatModel } from "../lib/llm/providers";
 import { createAgentTools } from "../lib/agents/tools";
 import {
@@ -20,6 +23,29 @@ import {
   ToolMessage,
 } from "@langchain/core/messages";
 import type { BaseMessage } from "@langchain/core/messages";
+
+// ── Persistence helpers ──
+const STORAGE_KEYS = {
+  API_KEYS: "aether-api-keys",
+  CONFIG: "aether-llm-config",
+} as const;
+
+function loadFromStorage<T>(key: string, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function saveToStorage(key: string, value: unknown): void {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // localStorage may be unavailable in some contexts
+  }
+}
 
 interface AiState {
   // ── State ──
@@ -46,6 +72,7 @@ interface AiState {
   setUseAgentMode: (mode: boolean) => void;
   addToolActivity: (activity: string) => void;
   clearToolActivity: () => void;
+  initializeStore: () => Promise<void>; // Hydrate from localStorage + auto-detect Ollama models
 }
 
 let messageCounter = 0;
@@ -102,8 +129,8 @@ Start by exploring this directory when the user asks about their project.`;
 
 export const useAiStore = create<AiState>((set, get) => ({
   aiMode: false,
-  config: DEFAULT_LLM_CONFIG,
-  apiKeys: {},
+  config: loadFromStorage<LLMConfig>(STORAGE_KEYS.CONFIG, DEFAULT_LLM_CONFIG),
+  apiKeys: loadFromStorage<ApiKeys>(STORAGE_KEYS.API_KEYS, {}),
   messages: [],
   isStreaming: false,
   chatPanelOpen: false,
@@ -116,20 +143,29 @@ export const useAiStore = create<AiState>((set, get) => ({
 
   setChatPanelOpen: (open) => set({ chatPanelOpen: open }),
 
-  setConfig: (partial) =>
-    set((s) => ({ config: { ...s.config, ...partial } })),
+  setConfig: (partial) => {
+    const newConfig = { ...get().config, ...partial };
+    saveToStorage(STORAGE_KEYS.CONFIG, newConfig);
+    set({ config: newConfig });
+  },
 
-  setApiKey: (provider, key) =>
-    set((s) => ({ apiKeys: { ...s.apiKeys, [provider]: key } })),
+  setApiKey: (provider, key) => {
+    const newKeys = { ...get().apiKeys, [provider]: key };
+    saveToStorage(STORAGE_KEYS.API_KEYS, newKeys);
+    set({ apiKeys: newKeys });
+  },
 
-  removeApiKey: (provider) =>
-    set((s) => {
-      const newKeys = { ...s.apiKeys };
-      delete newKeys[provider];
-      return { apiKeys: newKeys };
-    }),
+  removeApiKey: (provider) => {
+    const newKeys = { ...get().apiKeys };
+    delete newKeys[provider];
+    saveToStorage(STORAGE_KEYS.API_KEYS, newKeys);
+    set({ apiKeys: newKeys });
+  },
 
-  loadApiKeys: (keys) => set({ apiKeys: keys }),
+  loadApiKeys: (keys) => {
+    saveToStorage(STORAGE_KEYS.API_KEYS, keys);
+    set({ apiKeys: keys });
+  },
 
   setUseAgentMode: (mode) => set({ useAgentMode: mode }),
 
@@ -137,6 +173,39 @@ export const useAiStore = create<AiState>((set, get) => ({
     set((s) => ({ toolActivity: [...s.toolActivity.slice(-50), activity] })),
 
   clearToolActivity: () => set({ toolActivity: [] }),
+
+  /**
+   * Initialize: hydrate from localStorage, then auto-detect
+   * Ollama models so the default model actually exists.
+   */
+  initializeStore: async () => {
+    const { config } = get();
+
+    // If using local provider, verify the configured model actually exists
+    if (config.provider === "local") {
+      const ollamaOnline = await testOllamaConnection();
+      if (ollamaOnline) {
+        const models = await getOllamaModels();
+        if (models.length > 0 && !models.includes(config.model)) {
+          // The configured model doesn't exist — switch to the first available one
+          const newModel = models[0];
+          const newConfig = { ...config, model: newModel };
+          saveToStorage(STORAGE_KEYS.CONFIG, newConfig);
+          set({ config: newConfig });
+          console.log(`[Aether] Auto-selected Ollama model: ${newModel}`);
+        }
+      } else {
+        // Ollama is offline — if we have a Groq key, auto-switch
+        const { apiKeys } = get();
+        if (apiKeys.groq) {
+          const newConfig = { ...GROQ_FALLBACK_CONFIG };
+          saveToStorage(STORAGE_KEYS.CONFIG, newConfig);
+          set({ config: newConfig });
+          console.log(`[Aether] Ollama offline, auto-switched to Groq fallback`);
+        }
+      }
+    }
+  },
 
   sendMessage: async (content: string, workspacePath?: string | null, fileContext?: string) => {
     const { config, apiKeys, messages } = get();
