@@ -228,7 +228,7 @@ export async function getOllamaModels(): Promise<string[]> {
 /** Returns the default model for a provider */
 function getDefaultModel(provider: LLMProvider): string {
   const defaults: Record<LLMProvider, string> = {
-    local: "gemma4:e4b",
+    local: "auto",
     groq: "llama-3.3-70b-versatile",
     openai: "gpt-4o-mini",
     anthropic: "claude-3-5-haiku-20241022",

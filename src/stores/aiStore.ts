@@ -208,7 +208,42 @@ export const useAiStore = create<AiState>((set, get) => ({
   },
 
   sendMessage: async (content: string, workspacePath?: string | null, fileContext?: string) => {
-    const { config, apiKeys, messages } = get();
+    let { config } = get();
+    const { apiKeys, messages } = get();
+
+    // Auto-fix: if using local provider, verify the model exists before sending
+    if (config.provider === "local") {
+      try {
+        const models = await getOllamaModels();
+        if (models.length > 0 && !models.includes(config.model)) {
+          // The configured model doesn't exist — auto-switch to the first available one
+          config = { ...config, model: models[0] };
+          saveToStorage(STORAGE_KEYS.CONFIG, config);
+          set({ config });
+          console.log(`[Aether] Auto-fixed model to: ${models[0]}`);
+        } else if (models.length === 0) {
+          // Ollama has no models — check for cloud fallback
+          if (apiKeys.groq) {
+            config = { ...GROQ_FALLBACK_CONFIG };
+            saveToStorage(STORAGE_KEYS.CONFIG, config);
+            set({ config });
+          } else {
+            set({ error: "Ollama has no models installed. Run: ollama pull gemma2:9b" });
+            return;
+          }
+        }
+      } catch {
+        // Ollama unreachable — try Groq fallback
+        if (apiKeys.groq) {
+          config = { ...GROQ_FALLBACK_CONFIG };
+          saveToStorage(STORAGE_KEYS.CONFIG, config);
+          set({ config });
+        } else {
+          set({ error: "Ollama is not running. Start it with: ollama serve" });
+          return;
+        }
+      }
+    }
 
     // Check if API key exists — local provider doesn't need one
     if (config.provider !== "local" && !apiKeys[config.provider]) {

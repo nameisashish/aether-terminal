@@ -108,12 +108,13 @@ export interface LLMConfig {
 }
 
 /**
- * Default configuration — Local (Gemma 4) via Ollama.
- * Falls back to Groq if Ollama is not available.
+ * Default configuration — Local via Ollama.
+ * The model is set to "auto" which triggers auto-detection
+ * of available models on first message send.
  */
 export const DEFAULT_LLM_CONFIG: LLMConfig = {
   provider: "local",
-  model: "gemma4:e4b",  // Best balance of speed + quality
+  model: "auto",  // Auto-detected from Ollama on first use
   temperature: 0.7,
   maxTokens: 4096,
   streaming: true,
