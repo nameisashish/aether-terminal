@@ -10,6 +10,7 @@
 
 import { useEffect, useCallback, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   FolderOpen,
@@ -149,6 +150,29 @@ export function FileExplorer() {
       return [];
     }
   }, []);
+
+  // ── Listen to Native Menu Events ──
+  useEffect(() => {
+    const unlistenNewFile = listen("menu-new-file", () => {
+      setExplorerOpen(true);
+      setShowNewInput("file");
+    });
+    
+    const unlistenNewFolder = listen("menu-new-folder", () => {
+      setExplorerOpen(true);
+      setShowNewInput("folder");
+    });
+    
+    const unlistenOpenFolder = listen("menu-open-folder", () => {
+      handleOpenFolder();
+    });
+
+    return () => {
+      unlistenNewFile.then(fn => fn());
+      unlistenNewFolder.then(fn => fn());
+      unlistenOpenFolder.then(fn => fn());
+    };
+  }, [setExplorerOpen, handleOpenFolder]);
 
   // ── Handle Right Click ──
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
