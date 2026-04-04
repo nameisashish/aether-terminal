@@ -26,6 +26,7 @@ import { useAgentStore } from "../../stores/agentStore";
 import { useWorkspaceStore } from "../../stores/workspaceStore";
 import { useFileStore } from "../../stores/fileStore";
 import { PROVIDER_INFO } from "../../lib/llm/types";
+import { Markdown } from "./Markdown";
 
 /** Quick-start prompt suggestions */
 const QUICK_PROMPTS = [
@@ -407,12 +408,16 @@ export function AiChatPanel() {
                   fontSize: "13px",
                   lineHeight: "1.6",
                   color: "var(--text-primary)",
-                  whiteSpace: "pre-wrap",
                   wordBreak: "break-word",
                   fontFamily: "var(--font-sans)",
+                  overflow: "hidden",
                 }}
               >
-                {msg.content}
+                {msg.role === "assistant" ? (
+                  <Markdown content={msg.content} />
+                ) : (
+                  <span style={{ whiteSpace: "pre-wrap" }}>{msg.content}</span>
+                )}
                 {msg.isStreaming && (
                   <span
                     style={{
@@ -448,6 +453,48 @@ export function AiChatPanel() {
               </div>
             </div>
           ))}
+
+          {/* Tool Activity Feed - shows what AI is doing in real-time */}
+          {isStreaming && toolActivity.length > 0 && (
+            <div
+              style={{
+                margin: "4px 0",
+                padding: "8px 10px",
+                borderRadius: "8px",
+                background: "rgba(124, 92, 252, 0.04)",
+                border: "1px solid rgba(124, 92, 252, 0.1)",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: "10px",
+                  fontWeight: 600,
+                  color: "var(--accent)",
+                  marginBottom: "4px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "4px",
+                }}
+              >
+                <Loader2 size={10} className="animate-spin" />
+                AI is working...
+              </div>
+              {toolActivity.slice(-5).map((activity, idx) => (
+                <div
+                  key={idx}
+                  style={{
+                    fontSize: "11px",
+                    color: "var(--text-secondary)",
+                    fontFamily: "var(--font-mono)",
+                    padding: "1px 0",
+                    opacity: idx === toolActivity.slice(-5).length - 1 ? 1 : 0.6,
+                  }}
+                >
+                  {activity}
+                </div>
+              ))}
+            </div>
+          )}
 
           {/* Error display */}
           {error && (

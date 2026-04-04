@@ -19,6 +19,7 @@ import {
 import { useState } from "react";
 import { useWorkspaceStore } from "../../stores/workspaceStore";
 import { useAiStore } from "../../stores/aiStore";
+import { highlightLine, hasHighlighting } from "../../lib/syntax/highlighter";
 
 export function FileViewer() {
   const { openFilePath, openFileContent, openFileLanguage, closeFile } = useWorkspaceStore();
@@ -192,7 +193,9 @@ export function FileViewer() {
                     overflow: "hidden",
                   }}
                 >
-                  {line || " "}
+                  {hasHighlighting(openFileLanguage)
+                    ? highlightLine(line || " ", openFileLanguage)
+                    : (line || " ")}
                 </td>
               </tr>
             ))}

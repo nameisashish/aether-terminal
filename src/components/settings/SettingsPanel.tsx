@@ -249,7 +249,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                       lineHeight: "1.6",
                     }}
                   >
-                    <strong>Aether Terminal</strong> v0.1.0<br />
+                    <strong>Aether Terminal</strong> v0.2.0<br />
                     AI-native terminal with 8 specialized agents.<br />
                     Built with Tauri v2 · React 19 · xterm.js · LangChain.js
                   </div>

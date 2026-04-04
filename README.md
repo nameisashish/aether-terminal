@@ -5,47 +5,44 @@
 </p>
 
 <p align="center">
-  <em>8 specialized AI agents · Gemma 4 local AI · Real PTY · Human-in-the-loop · Cross-platform</em>
+  <em>8 specialized AI agents · Local AI via Ollama · Real PTY · Human-in-the-loop · Cross-platform</em>
   <br />
-  Built with Tauri v2 · React 19 · xterm.js · LangChain.js · Ollama
+  Built with Tauri v2 · React 19 · xterm.js · LangChain.js
 </p>
 
 ---
 
 ## Why Aether Terminal?
 
-Aether Terminal is designed by engineers, for engineers. Whether you're a Staff+ engineer who needs a keyboard-first, zero-friction workflow with full terminal control — or a junior developer who wants AI guidance without leaving the terminal — Aether adapts to your level.
+Aether Terminal is an **AI-native coding environment** that combines a real terminal, file explorer, and AI chat panel into a single desktop application. It's designed for engineers who want AI assistance without leaving their terminal workflow.
 
-**For Senior/Staff+ Engineers:**
-- Real PTY with full vim/tmux/ssh compatibility — not a pseudo-terminal
-- Keyboard-first: `Enter` to approve, `Esc` to reject, `Shift+Enter` for multiline
-- No hand-holding: concise, production-grade AI responses by default
-- Fully configurable: swap providers, tweak temperature, disable streaming
-- Human-in-the-loop: every destructive action requires explicit approval with risk levels
-- **Local AI: Run Gemma 4 offline via Ollama — zero data leaves your machine**
+**What makes it different:**
+- **Real PTY** — Not a pseudo-terminal. Full vim, tmux, ssh, nano, piping, ANSI color support
+- **8 AI Agents** — A specialized team: Supervisor, Architect, Coder, Reviewer, Tester, QA, Documenter, Deployer
+- **Tool-calling AI** — The AI can read your files, write code, search codebases, and run commands (with your approval)
+- **Human-in-the-loop** — Every destructive action (file writes, shell commands) requires your explicit approval
+- **Offline AI** — Run Gemma/Llama models locally via Ollama — zero data leaves your machine
+- **Multi-provider** — Groq, OpenAI, Anthropic, Google Gemini, xAI, OpenRouter — switch freely
 
-**For Junior Engineers:**
-- Quick-start prompt buttons to get started immediately
-- Clear help text and keyboard shortcut hints throughout the UI
-- Agent explanations include "why" alongside "what"
-- Guided API key setup with security context
-- Approval dialogs explain what's about to happen in plain language
-- **One-click setup: Ollama + Gemma 4 = free AI, no API key needed**
+---
 
 ## ✨ Features
 
 | Feature | Description |
 |---------|-------------|
-| **Real PTY** | Full pseudoterminal — ANSI colors, vim, tmux, mouse events, native shell |
-| **Local AI (Gemma 4)** | Run AI completely offline with Ollama — free, private, no API key |
-| **Multi-Provider AI** | Groq (fast), OpenAI, Anthropic, Google Gemini, xAI Grok, OpenRouter |
+| **Real PTY** | Full pseudoterminal with ANSI colors, vim, tmux, mouse events, native shell |
+| **Local AI** | Run models offline with Ollama — free, private, no API key needed |
+| **Multi-Provider** | Groq (fast), OpenAI, Anthropic, Google Gemini, xAI Grok, OpenRouter |
 | **8-Agent Team** | Supervisor, Architect, Coder, Reviewer, Tester, QA, Documenter, Deployer |
-| **Human-in-the-Loop** | Risk-graded approval dialogs for file writes and shell commands |
-| **File Explorer** | Sidebar file tree with AI context selection |
-| **File Viewer** | Built-in code viewer tab showing file contents |
-| **Multi-Tab** | GPU-accelerated (WebGL) terminal tabs |
+| **Tool-Calling AI** | AI reads files, writes code, searches codebases, runs commands |
+| **Human-in-the-Loop** | Every file write and shell command requires your approval |
+| **File Explorer** | Sidebar file tree with AI context selection, create/delete files |
+| **Code Viewer** | Built-in file viewer with syntax highlighting and line numbers |
+| **Markdown Chat** | AI responses render with code blocks, copy buttons, and formatting |
+| **Settings Persistence** | API keys and model config saved to localStorage — survives restarts |
+| **Multi-Tab Terminal** | GPU-accelerated (WebGL) terminal tabs |
 | **Cross-Platform** | macOS, Windows, Linux via Tauri v2 native builds |
-| **Keyboard-First** | Enter/Esc approvals, ⌘T new tab, Escape to close panels |
+| **Keyboard-First** | Enter/Esc approvals, ⌘T new tab, ⌘, settings, Escape to close |
 
 ---
 
@@ -58,364 +55,265 @@ Aether Terminal is designed by engineers, for engineers. Whether you're a Staff+
 | **Node.js** | ≥ 18 | [nodejs.org](https://nodejs.org) |
 | **pnpm** | ≥ 8 | `npm i -g pnpm` |
 | **Rust** | ≥ 1.70 | [rustup.rs](https://rustup.rs) |
-| **Tauri v2 deps** | latest | [Prerequisites](https://v2.tauri.app/start/prerequisites/) |
+| **Tauri v2 deps** | latest | [Tauri Prerequisites](https://v2.tauri.app/start/prerequisites/) |
 
 ### Install & Run
 
 ```bash
+# Clone the repo
+git clone https://github.com/nameisashish/aether-terminal.git
+cd aether-terminal
+
 # Install dependencies
 pnpm install
 
-# Start dev server (frontend + Rust backend + native window)
+# Start the app (frontend + Rust backend + native window)
 pnpm tauri dev
 ```
 
-### Frontend-Only Development
+### Download Pre-Built Binaries
 
-```bash
-# No PTY/Tauri features, just the React UI
-pnpm dev
-```
+Go to the [Releases page](https://github.com/nameisashish/aether-terminal/releases) and download the latest `.dmg` (macOS), `.msi` (Windows), or `.AppImage` (Linux).
 
 ---
 
-## 🤖 Running Gemma 4 Locally (Free AI, No API Key)
+## 📖 How to Use
 
-Aether Terminal uses **Gemma 4** (by Google) as the default local AI model, running through **Ollama**.
+### 1. Terminal
 
-### Step 1: Install Ollama
+The main area is a **real terminal** powered by xterm.js + a native PTY (pseudo-terminal). It behaves exactly like your default macOS Terminal / Windows Terminal / Linux terminal:
 
-**macOS:**
+- Type any command: `ls`, `cd`, `git`, `npm`, `python`, `vim`, etc.
+- Full color support, cursor movement, and interactive programs
+- Press **⌘T** to open a new terminal tab
+- Press **⌘W** to close the current tab
+
+### 2. File Explorer (Left Panel)
+
+Click the **folder icon** in the sidebar (or use `File → Open Folder` in the menu bar) to connect a directory:
+
+- **Browse files**: Click folders to expand/collapse. Click files to view them in the code viewer.
+- **Right-click**: Create new files, new folders, or connect a different directory.
+- **Select files for AI**: Click the checkbox next to files to include them as context when chatting with the AI.
+- **Refresh**: Hit the refresh button to reload the file tree after external changes.
+
+### 3. AI Chat (Right Panel)
+
+Click the **✨ sparkle icon** in the sidebar to open the AI chat:
+
+- **Ask questions**: Type a question about your code and press Enter.
+- **Quick prompts**: Click one of the 4 preset buttons to get started fast.
+- **Code blocks**: AI responses render with syntax-highlighted code blocks and a **Copy** button.
+- **Tool activity**: Watch real-time what the AI is doing (reading files, searching, running commands).
+- **File context**: Files selected in the explorer are automatically included as context.
+
+### 4. Agent Team Mode
+
+Toggle **"Agent Team"** in the chat header to activate the multi-agent system:
+
+- The **Supervisor** analyzes your request and creates a plan
+- Tasks are delegated to specialized agents (Architect, Coder, Reviewer, etc.)
+- Each agent has full access to your codebase via tools
+- **Approval dialogs** pop up whenever an agent wants to write a file or run a command
+- Press **Enter** to approve, **Escape** to reject
+
+### 5. Settings (⌘ ,)
+
+Press **⌘ ,** (Cmd + Comma) to open Settings:
+
+- **API Keys**: Add keys for cloud providers (Groq, OpenAI, Anthropic, etc.)
+- **Model**: Select which model to use and adjust temperature/tokens
+- **General**: View keyboard shortcuts and links
+
+---
+
+## 🤖 AI Setup Guide
+
+### Option A: Local AI (Free, Offline, Private)
+
+Run AI entirely on your computer using **Ollama**:
+
 ```bash
-brew install ollama
-```
+# 1. Install Ollama
+brew install ollama        # macOS (Homebrew)
+# Or download from https://ollama.com
 
-**Windows:**
-Download from [ollama.com/download](https://ollama.com/download)
-
-**Linux:**
-```bash
-curl -fsSL https://ollama.com/install.sh | sh
-```
-
-### Step 2: Start Ollama
-
-```bash
+# 2. Start the Ollama server
 ollama serve
+
+# 3. Pull a model (pick one):
+ollama pull gemma2:9b      # Google Gemma 2 — excellent quality (5.4GB)
+ollama pull llama3.1:8b    # Meta Llama 3.1 — fast and capable (4.7GB)
+ollama pull qwen2.5-coder  # Alibaba Qwen — specialized for coding
+
+# 4. Open Aether Terminal
+# It auto-detects Ollama and your models!
 ```
 
-> Ollama runs in the background on `localhost:11434`. Leave this terminal open.
+**Important**: Keep `ollama serve` running in a separate terminal window while using Aether.
 
-### Step 3: Pull Gemma 4
+### Option B: Groq (Free Tier, Ultra-Fast)
 
-```bash
-# Recommended default — excellent balance of speed + quality
-ollama pull gemma4:e4b
+1. Go to [console.groq.com](https://console.groq.com) and create a free account
+2. Generate an API key
+3. In Aether Terminal, press **⌘ ,** → **API Keys** → click **Add Key** next to Groq
+4. Paste your key and press **Enter** (or click the ✓ button)
+5. The model automatically switches to Groq's `llama-3.3-70b-versatile`
 
-# Lightweight — best for laptops with 8-16GB RAM
-ollama pull gemma4:e2b
+### Option C: Other Providers
 
-# Higher quality — needs a dedicated GPU
-ollama pull gemma4:26b
-
-# Highest quality — needs 24GB+ VRAM (RTX 3090/4090 or Mac M-series 48GB+)
-ollama pull gemma4:31b
-```
-
-### Step 4: Use in Aether Terminal
-
-1. Open Aether Terminal
-2. Go to **Settings → API Keys**
-3. The **Local (Gemma 4)** section shows the Ollama connection status
-4. If status shows "Running" — you're ready to chat!
-5. The model selector auto-detects all models you've pulled in Ollama
-
-### Fallback Behavior
-
-**Automatic:** If Ollama is not running when you send a message, Aether automatically switches to **Groq** (if you have a Groq API key configured). You'll see a `[Ollama offline — using Groq as fallback]` notice.
-
-**Manual:** You can also switch to any cloud provider anytime in Settings:
-- **Groq** (recommended fallback — free tier, ultra-fast)
-- OpenAI, Anthropic, Gemini, xAI, or OpenRouter
-
----
-
-## 📥 Installation (Bypassing Security Warnings)
-
-Since Aether Terminal is open-source and free, we don't pay for code signing certificates. Your OS may show a security warning on first launch. **This is normal for unsigned apps.** Here's how to bypass it:
-
-### macOS: "Aether Terminal Not Opened" Fix
-
-macOS Gatekeeper shows: *"Apple could not verify 'Aether Terminal' is free of malware..."*
-
-**Method 1 — Right-Click Open (easiest):**
-1. Find **Aether Terminal** in your Applications folder
-2. **Right-click** (or Control-click) the app icon
-3. Select **"Open"** from the context menu
-4. Click **"Open"** in the dialog that appears
-5. ✅ Done — the app will open normally from now on
-
-**Method 2 — Terminal Command (if right-click doesn't work):**
-```bash
-# Remove the quarantine attribute
-xattr -cr /Applications/Aether\ Terminal.app
-
-# Then open normally
-open /Applications/Aether\ Terminal.app
-```
-
-**Method 3 — System Settings:**
-1. Try to open the app (it will be blocked)
-2. Go to **System Settings → Privacy & Security**
-3. Scroll down — you'll see *"Aether Terminal was blocked"*
-4. Click **"Open Anyway"**
-
-### Windows: SmartScreen "Windows Protected Your PC" Fix
-
-**Method 1 — Run Anyway (easiest):**
-1. Run the `.exe` installer
-2. SmartScreen shows *"Windows protected your PC"*
-3. Click **"More info"** (this reveals the Run button)
-4. Click **"Run anyway"**
-5. ✅ Done — follow the installer prompts
-
-**Method 2 — Unblock via Properties:**
-1. Right-click the downloaded `.exe` file
-2. Select **Properties**
-3. At the bottom, check **"Unblock"**
-4. Click **Apply**, then run the installer
-
-### Linux
-
-No warnings. Linux doesn't have the same gatekeeper restrictions:
-
-```bash
-# AppImage
-chmod +x Aether.Terminal_*.AppImage && ./Aether.Terminal_*.AppImage
-
-# Debian/Ubuntu
-sudo dpkg -i Aether.Terminal_*.deb
-```
-
-### Why These Warnings Happen
-
-Code signing certificates cost **$99-299/year** (Apple) and **$200-500+/year** (Windows/EV certificate). As a free, open-source project, we don't pay for these. The app is 100% safe — you can [review the source code](https://github.com/nameisashish/aether-terminal) yourself.
-
----
-
-## 🏭 Production Builds
-
-| Platform | Command | Output |
+| Provider | Get Key | Models |
 |----------|---------|--------|
-| **macOS** | `pnpm tauri build` | `src-tauri/target/release/bundle/dmg/` |
-| **Windows** | `pnpm tauri build` | `src-tauri/target/release/bundle/nsis/` |
-| **Linux** | `pnpm tauri build` | `src-tauri/target/release/bundle/appimage/` |
+| **OpenAI** | [platform.openai.com](https://platform.openai.com) | GPT-4o, GPT-4o-mini |
+| **Anthropic** | [console.anthropic.com](https://console.anthropic.com) | Claude Sonnet 4, Claude 3 Opus |
+| **Google Gemini** | [ai.google.dev](https://ai.google.dev) | Gemini 2.0 Flash, Gemini 1.5 Pro |
+| **xAI** | [console.x.ai](https://console.x.ai) | Grok-2, Grok-2 Mini |
+| **OpenRouter** | [openrouter.ai](https://openrouter.ai) | 100+ models via single key |
 
 ---
 
-## 🔑 API Keys
+## 🎯 8-Agent System
 
-Keys are stored locally on-device via `tauri-plugin-store`. They never leave your machine except to the respective LLM API.
+When you toggle **Agent Team** mode, your request is handled by a team of 8 specialized AI agents:
 
-Configure in **Settings (gear icon) → API Keys**.
+| Agent | Role | When Used |
+|-------|------|-----------|
+| 🎯 **Supervisor** | Orchestrates tasks, creates plans, delegates work | Every request |
+| 🏗️ **Architect** | Designs system architecture, analyzes dependencies | Ambiguous problems, structural changes |
+| 💻 **Coder** | Writes and modifies production code | All code changes |
+| 🔍 **Reviewer** | Reviews code quality, finds bugs, suggests improvements | After any code change |
+| 🧪 **Tester** | Creates and runs tests, validates functionality | After code changes, bug fixes |
+| ✅ **QA Validator** | Validates quality, checks edge cases | Critical or risky changes |
+| 📝 **Documenter** | Writes documentation, READMEs, API docs | When APIs or setup changes |
+| 🚀 **Deployer** | Handles build configs, CI/CD, deployment | Build/deploy flow changes |
 
-| Provider | Type | Default Model | Get Key |
-|----------|------|---------------|---------|
-| **Local (Gemma 4)** | Free/Local | `gemma4:e4b` | [Install Ollama](https://ollama.com) — no key needed |
-| **Groq** (recommended cloud) | Free tier | `llama-3.3-70b-versatile` | [console.groq.com](https://console.groq.com) |
-| OpenAI | Paid | `gpt-4o-mini` | [platform.openai.com](https://platform.openai.com) |
-| Anthropic | Paid | `claude-3-5-haiku` | [console.anthropic.com](https://console.anthropic.com) |
-| Google Gemini | Free tier | `gemini-2.0-flash` | [aistudio.google.com](https://aistudio.google.com) |
-| xAI | Paid | `grok-2-mini` | [x.ai](https://x.ai) |
-| OpenRouter | Varies | `meta-llama/llama-3.1-70b` | [openrouter.ai](https://openrouter.ai) |
+**Example workflow:**
+1. You ask: *"Add a dark mode toggle to the settings page"*
+2. **Supervisor** creates plan: Architect → Coder → Reviewer → Tester
+3. **Architect** analyzes existing code structure
+4. **Coder** writes the toggle component and theme logic
+5. **Reviewer** checks code quality and patterns
+6. **Tester** writes a test for the new feature
 
 ---
 
-## 🤖 Multi-Agent System (Confirmed Working)
+## ⌨️ Keyboard Shortcuts
 
-8 specialized agents orchestrated by a Supervisor. Each agent has a Staff/Principal-level system prompt, a full tool-calling loop (read files → write files → run commands → search → patch), and works with any provider including local Gemma 4.
-
-### The Agent Team
-
-| Agent | Role | Prompt Level |
-|-------|------|--------------|
-| 🎯 **Supervisor** | Decomposes tasks, assigns agents, synthesizes results | Staff+ Lead (Google/Stripe/SpaceX caliber) |
-| 🏗️ **Architect** | System design, architecture, technical planning | Distinguished Architect (Netflix/AWS/Cloudflare caliber) |
-| 💻 **Coder** | Production-quality code, type-safe, convention-following | Top 0.1% Staff Engineer (Stripe/Google Brain caliber) |
-| 🔍 **Reviewer** | Security, performance, readability (🔴/🟡/🟢 severity) | Staff/Principal Engineer (nuclear-grade reviews) |
-| 🧪 **Tester** | Behavior-driven tests, meaningful coverage | Top-tier SDET (launch-critical quality) |
-| ✅ **QA Validator** | Edge cases, error handling, accessibility audit | Elite QA (Stripe/Apple/NASA caliber) |
-| 📝 **Documenter** | Quick Start + Advanced Usage, copy-pasteable examples | World-class Technical Writer (Stripe API docs caliber) |
-| 🚀 **Deployer** | Reproducible builds, multi-platform, health checks | SRE/Platform Engineer (Vercel/Fly.io caliber) |
-
-### Agent Workflow
-
-```
-User describes task → Supervisor creates plan → Agents execute (parallel where possible)
-     ↓                    ↓                         ↓
-  Agent Dashboard    Plan with agent           Tool-calling loops:
-  shows live         assignments +             read_file → write_file →
-  status for         (parallel) flags          run_command → search_files
-  all 8 agents                                       ↓
-                                              Human-in-the-loop approvals
-                                              (Enter/Esc, risk badges)
-                                                     ↓
-                                              Supervisor synthesizes
-                                              final summary
-```
-
-### How to Use the Multi-Agent System
-
-1. Click the **👥 Agents** button in the title bar (or press the Agent Team button)
-2. Describe your task in the input: *"Build a REST API with Express and JWT auth"*
-3. Watch the **Supervisor** create a plan and assign agents
-4. Agents execute with live status updates in the dashboard
-5. **Approve or reject** file writes and shell commands via approval dialogs
-6. Supervisor provides a final summary of what was accomplished
-
-### Agent Tools
-
-All agents can use these tools (with human approval for writes/commands):
-
-| Tool | Description | Approval Required |
-|------|-------------|-------------------|
-| `read_file` | Read any file from the filesystem | ❌ No |
-| `write_file` | Create or overwrite a file | ✅ Yes |
-| `patch_file` | Replace a section of a file (search → replace) | ✅ Yes |
-| `run_command` | Execute shell commands (build, test, lint) | ✅ Yes |
-| `list_directory` | List files and folders | ❌ No |
-| `search_files` | Grep-like search across files | ❌ No |
-
-### Using Gemma 4 with the Multi-Agent System
-
-The agents work seamlessly with Gemma 4 via Ollama. For best results:
-
-- **`gemma4:e4b`** (default): Excellent balance of speed and quality — recommended for most users
-- **`gemma4:e2b`**: Lightweight variant, runs on laptops with 8-16GB RAM
-- **`gemma4:26b`**: Higher quality for complex multi-file tasks (needs dedicated GPU)
-- **`gemma4:31b`**: Highest quality, best for complex architecture tasks (needs 24GB+ VRAM)
-
-If Ollama is not running, Aether auto-falls back to **Groq** (free, ultra-fast cloud). You can also manually switch providers in Settings anytime.
+| Shortcut | Action |
+|----------|--------|
+| **⌘ T** | New terminal tab |
+| **⌘ W** | Close current tab |
+| **⌘ ,** | Open Settings |
+| **Enter** | Approve agent action / Send message |
+| **Escape** | Reject agent action / Close panel |
+| **Shift + Enter** | Newline in chat input |
 
 ---
 
 ## 🏗️ Architecture
 
 ```
-aether-terminal/
-├── src-tauri/                    # Rust backend (Tauri v2)
-│   ├── src/
-│   │   ├── lib.rs                # Plugin registration, IPC handlers
-│   │   ├── main.rs               # App entry point
-│   │   └── pty.rs                # PTY session manager (portable-pty)
-│   ├── capabilities/default.json # Security permissions
-│   ├── Cargo.toml                # Rust dependencies
-│   └── tauri.conf.json           # App config, window, bundler
-│
-├── src/                          # React frontend
-│   ├── components/
-│   │   ├── terminal/             # xterm.js Terminal + TerminalTabs
-│   │   ├── ai/                   # AiChatPanel (streaming chat)
-│   │   ├── agents/               # AgentDashboard + ApprovalDialog
-│   │   ├── explorer/             # FileExplorer + FileNode
-│   │   ├── settings/             # SettingsPanel + ApiKeyManager
-│   │   └── layout/               # MainLayout, TitleBar, StatusBar
-│   ├── stores/                   # Zustand state (terminal, ai, agent, file)
-│   ├── hooks/                    # usePty (PTY ↔ xterm bridge)
-│   └── lib/
-│       ├── llm/                  # Multi-provider client (7 providers)
-│       └── agents/               # Agent graph, tools, type definitions
-│
-└── README.md
+┌─────────────────────────────────────────────────┐
+│                  Aether Terminal                 │
+├──────────┬──────────────────┬───────────────────┤
+│  File    │    Terminal      │    AI Chat        │
+│ Explorer │  (xterm.js +    │  (LangChain +     │
+│ (React)  │   WebGL PTY)    │   Tool Calling)   │
+├──────────┴──────────────────┴───────────────────┤
+│            Zustand State Management             │
+│  aiStore · fileStore · terminalStore · agents   │
+├─────────────────────────────────────────────────┤
+│          Tauri v2 (Rust Backend)                │
+│   Native menus · PTY spawn · File system APIs   │
+│        tauri-plugin-fs · tauri-plugin-shell      │
+└─────────────────────────────────────────────────┘
+```
+
+**Key stores:**
+- `aiStore.ts` — LLM config, API keys, chat messages, tool-calling loop
+- `fileStore.ts` — File tree, selected files for AI context
+- `workspaceStore.ts` — Active project root, open file viewer
+- `agentStore.ts` — Multi-agent task execution, approval queue
+- `terminalStore.ts` — Terminal tabs, active tab tracking
+
+---
+
+## 🔧 Troubleshooting
+
+### "model 'gemma4:e4b' not found"
+The default config references a model that may not exist on your machine. On startup, Aether auto-detects your Ollama models. If you still see this error:
+1. Open Settings (⌘ ,) 
+2. Scroll to the **Model** dropdown
+3. Select the model you actually have installed (e.g., `gemma2:9b`)
+
+### "Ollama is not running"
+Make sure you ran `ollama serve` in a separate terminal window. Ollama must be running in the background for local AI to work.
+
+### AI keeps saying "I'm just a chatbot"
+This means the tool-calling loop isn't engaging. Try:
+1. Make sure you have a directory connected via File Explorer
+2. Ask a specific question about your code (e.g., "What files are in this project?")
+3. The AI needs workspace context to activate its tools
+
+### API key not saving
+When you paste an API key in Settings, you must press **Enter** or click the **✓ button** to save it. Just clicking away discards the key.
+
+### Build errors
+```bash
+# Clear Rust build cache
+cargo clean
+
+# Reinstall dependencies
+rm -rf node_modules && pnpm install
+
+# Rebuild
+pnpm tauri dev
 ```
 
 ---
 
-## 🔒 Security
+## 🛠️ Development
 
-- **Zero auto-execution**: All destructive actions require explicit approval
-- **Local-first AI**: Gemma 4 via Ollama — your data never leaves your machine
-- **Local-only key storage**: Keys stored via OS-native secure store
-- **CSP configured**: Content Security Policy in Tauri config
-- **No telemetry**: Zero data collection, zero phone-home
-- **Risk-graded approvals**: Visual risk indicators on every action
+### Project Structure
 
----
+```
+src/
+├── components/
+│   ├── ai/         # AI chat panel + markdown renderer
+│   ├── agents/     # Agent dashboard + approval dialog
+│   ├── explorer/   # File explorer + file viewer
+│   ├── layout/     # Main layout, title bar, status bar
+│   ├── settings/   # Settings panel + API key manager
+│   └── terminal/   # Terminal component + tabs
+├── hooks/          # usePty hook for PTY management
+├── lib/
+│   ├── agents/     # LangGraph multi-agent system
+│   ├── llm/        # Multi-provider LLM integration
+│   └── syntax/     # Lightweight syntax highlighter
+├── stores/         # Zustand state management
+└── index.css       # Design system + CSS variables
+src-tauri/
+├── src/lib.rs      # Rust backend entry point
+└── Cargo.toml      # Rust dependencies
+```
 
-## 📝 Tech Stack
-
-| Layer | Technology |
-|-------|-----------|
-| Desktop framework | Tauri v2 (Rust) |
-| Frontend | React 19 + TypeScript 5.8 + Vite 7 |
-| Terminal | xterm.js + WebGL + FitAddon |
-| Styling | Tailwind CSS v4 + custom design tokens |
-| State | Zustand |
-| Local AI | Ollama + Gemma 4 |
-| Cloud LLM | LangChain.js (7 providers) |
-| Agents | Supervisor-orchestrated 8-agent system |
-| PTY | portable-pty (Rust, cross-platform) |
-| Storage | tauri-plugin-store |
-| File System | tauri-plugin-fs |
-| Shell | tauri-plugin-shell |
-
----
-
-## 🌐 Landing Page
-
-The project landing page lives in the companion repository: [aether-landing](https://github.com/nameisashish/aether-landing).
-
-Deploy anywhere:
+### Building for Production
 
 ```bash
-# Vercel
-cd aether-landing && npx vercel --prod
-
-# Netlify, Cloudflare Pages, GitHub Pages
-# Just upload index.html
+# Build optimized native binaries
+pnpm tauri build
 ```
 
-The landing page includes:
-- Installation instructions for macOS, Windows, and Linux
-- macOS/Windows bypass guides for unsigned app warnings
-- Feature showcase and agent team overview
-- Auto-detect user OS and highlight correct download
-- Auto-fetch latest release assets from GitHub
+### Contributing
 
----
-
-## ⚠️ Known Limitations
-
-- `portable-pty` may have quirks on some Linux window managers
-- Tool-use quality depends on the LLM model (Groq Llama 3.3 70B works best for agents)
-- WebGL renderer falls back to canvas if GPU unavailable
-- Gemma 4 local inference speed depends on your hardware (GPU recommended)
-- The multi-agent system works best with models that support tool/function calling
-
----
-
-## 🗺️ Roadmap
-
-- [ ] Split pane terminals (horizontal/vertical)
-- [ ] Git integration in status bar
-- [ ] SSH session support
-- [ ] Custom agent plugin system
-- [ ] Conversation history persistence
-- [ ] Code diff viewer in approval dialogs
-- [ ] Tauri auto-updater
-- [ ] Configurable keybindings
-- [ ] Voice input for AI chat
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feat/my-feature`
+3. Commit your changes: `git commit -m "feat: add my feature"`
+4. Push to your fork: `git push origin feat/my-feature`
+5. Open a Pull Request
 
 ---
 
 ## 📄 License
 
-MIT
-
----
-
-<p align="center">
-  <strong>Aether Terminal</strong> — Your entire dev team, inside a terminal. ⚡
-  <br />
-  <em>Powered by Gemma 4 · Groq · OpenAI · Anthropic · Gemini · xAI · OpenRouter</em>
-</p>
+MIT © [Ashish Kishore](https://github.com/nameisashish)
