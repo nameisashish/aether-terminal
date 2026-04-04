@@ -363,7 +363,9 @@ export const useAiStore = create<AiState>((set, get) => ({
 
         while (iterations < MAX_ITERATIONS) {
           iterations++;
-          const response = await modelWithTools.invoke(currentMessages);
+          const response = await modelWithTools.invoke(currentMessages, {
+            timeout: 300000, // 5 min timeout for CPU-bound models
+          });
           currentMessages.push(response);
 
           const toolCalls = response.tool_calls;

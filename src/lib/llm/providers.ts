@@ -31,14 +31,20 @@ export function createChatModel(
   }
 
   switch (config.provider) {
-    case "local":
+    case "local": {
       // Ollama runs locally — no API key needed
-      return new ChatOllama({
+      // Large models on CPU can take 2-5 min for first response
+      const ollamaModel = new ChatOllama({
         model: config.model,
         temperature: config.temperature,
         baseUrl: "http://localhost:11434",
-        // Ollama streams by default
+        numCtx: 2048,  // Smaller context = faster + less RAM on CPU
       });
+      // Override the default timeout via internal client config
+      // @ts-expect-error – setting timeout on internal caller
+      ollamaModel.timeout = 300000; // 5 minutes
+      return ollamaModel;
+    }
 
     case "groq":
       return new ChatGroq({
