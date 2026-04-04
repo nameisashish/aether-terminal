@@ -5,6 +5,7 @@
 // ==========================================
 
 import { Sparkles, Settings, Users, FolderOpen } from "lucide-react";
+import { useWorkspaceStore } from "../../stores/workspaceStore";
 
 interface TitleBarProps {
   aiMode: boolean;
@@ -25,6 +26,8 @@ export function TitleBar({
   onToggleExplorer,
   explorerOpen,
 }: TitleBarProps) {
+  const { workspacePath } = useWorkspaceStore();
+
   return (
     <div className="title-bar">
       {/* Left: App branding + explorer toggle */}
@@ -52,6 +55,25 @@ export function TitleBar({
         <span className="title-bar-text" style={{ opacity: 0.4 }}>
           Terminal
         </span>
+        {workspacePath && (
+          <>
+            <span style={{ opacity: 0.2, margin: "0 4px" }}>|</span>
+            <span
+              style={{
+                fontSize: "12px",
+                color: "var(--text-secondary)",
+                fontWeight: 500,
+                maxWidth: "200px",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+              title={workspacePath}
+            >
+              {workspacePath.split("/").pop()}
+            </span>
+          </>
+        )}
       </div>
 
       {/* Right: Controls */}

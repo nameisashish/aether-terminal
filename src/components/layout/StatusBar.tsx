@@ -1,6 +1,6 @@
 // ==========================================
-// Status Bar Component — Dual-audience design
-// Bottom bar with connection status, shell info,
+// Status Bar Component
+// Bottom bar with connection status, workspace,
 // AI status, keyboard shortcuts hint, and
 // terminal dimensions.
 // ==========================================
@@ -8,12 +8,14 @@
 import { useTerminalStore } from "../../stores/terminalStore";
 import { useAiStore } from "../../stores/aiStore";
 import { useAgentStore } from "../../stores/agentStore";
+import { useWorkspaceStore } from "../../stores/workspaceStore";
 import { PROVIDER_INFO } from "../../lib/llm/types";
 
 export function StatusBar() {
   const { tabs, activeTabId } = useTerminalStore();
   const { aiMode, config, apiKeys } = useAiStore();
   const { currentTask } = useAgentStore();
+  const { workspacePath } = useWorkspaceStore();
   const activeTab = tabs.find((t) => t.id === activeTabId);
 
   const hasApiKey = !!apiKeys[config.provider];
@@ -21,7 +23,7 @@ export function StatusBar() {
 
   return (
     <div className="status-bar">
-      {/* Left: Connection status */}
+      {/* Left: Connection + Workspace */}
       <div className="status-bar-item">
         <span
           className={`status-dot ${
@@ -33,8 +35,24 @@ export function StatusBar() {
         </span>
         <span style={{ opacity: 0.3 }}>│</span>
         <span>zsh</span>
-        <span style={{ opacity: 0.3 }}>│</span>
-        <span>UTF-8</span>
+        {workspacePath && (
+          <>
+            <span style={{ opacity: 0.3 }}>│</span>
+            <span
+              style={{
+                maxWidth: "180px",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                color: "var(--accent)",
+                fontWeight: 500,
+              }}
+              title={workspacePath}
+            >
+              📂 {workspacePath.split("/").pop()}
+            </span>
+          </>
+        )}
       </div>
 
       {/* Center: AI status */}

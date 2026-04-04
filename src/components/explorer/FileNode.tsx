@@ -2,7 +2,9 @@
 // File Node Component
 // Individual file/folder node in the tree
 // with expand/collapse, selection, and
-// file type icons.
+// file type icons. Now supports:
+// - Click to open file in viewer
+// - Shift+click to add to AI context
 // ==========================================
 
 import { useState, useCallback } from "react";
@@ -24,6 +26,7 @@ interface FileNodeProps {
   entry: FileEntry;
   depth: number;
   onLoadChildren: (path: string) => Promise<FileEntry[]>;
+  onFileClick?: (path: string) => void;
 }
 
 /** Map file extensions to icons */
@@ -66,7 +69,7 @@ function getFileIcon(name: string) {
   }
 }
 
-export function FileNode({ entry, depth, onLoadChildren }: FileNodeProps) {
+export function FileNode({ entry, depth, onLoadChildren, onFileClick }: FileNodeProps) {
   const { selectedFiles, toggleSelected } = useFileStore();
   const [children, setChildren] = useState<FileEntry[]>(entry.children || []);
   const [isExpanded, setIsExpanded] = useState(entry.isExpanded || false);
@@ -86,8 +89,25 @@ export function FileNode({ entry, depth, onLoadChildren }: FileNodeProps) {
     setIsExpanded(!isExpanded);
   }, [entry.path, entry.isDirectory, isExpanded, isLoaded, onLoadChildren]);
 
-  const handleSelect = useCallback(
+  const handleClick = useCallback(
     (e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (entry.isDirectory) {
+        handleToggleExpand();
+      } else if (e.shiftKey) {
+        // Shift+click: toggle AI context selection
+        toggleSelected(entry.path);
+      } else {
+        // Normal click: open in file viewer
+        onFileClick?.(entry.path);
+      }
+    },
+    [entry.path, entry.isDirectory, handleToggleExpand, toggleSelected, onFileClick]
+  );
+
+  const handleContextSelect = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
       e.stopPropagation();
       if (!entry.isDirectory) {
         toggleSelected(entry.path);
@@ -96,13 +116,27 @@ export function FileNode({ entry, depth, onLoadChildren }: FileNodeProps) {
     [entry.path, entry.isDirectory, toggleSelected]
   );
 
-  // Don't show hidden files
-  if (entry.name.startsWith(".") && entry.name !== ".env") return null;
+  // Don't show hidden files (except .env, .gitignore)
+  if (
+    entry.name.startsWith(".") &&
+    entry.name !== ".env" &&
+    entry.name !== ".gitignore" &&
+    entry.name !== ".eslintrc" &&
+    entry.name !== ".prettierrc"
+  ) {
+    return null;
+  }
+
+  // Skip node_modules and .git
+  if (entry.name === "node_modules" || entry.name === ".git" || entry.name === "target") {
+    return null;
+  }
 
   return (
     <div>
       <div
-        onClick={entry.isDirectory ? handleToggleExpand : handleSelect}
+        onClick={handleClick}
+        onContextMenu={handleContextSelect}
         style={{
           display: "flex",
           alignItems: "center",
@@ -183,6 +217,7 @@ export function FileNode({ entry, depth, onLoadChildren }: FileNodeProps) {
               entry={child}
               depth={depth + 1}
               onLoadChildren={onLoadChildren}
+              onFileClick={onFileClick}
             />
           ))}
           {isLoaded && children.length === 0 && (

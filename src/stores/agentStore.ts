@@ -13,7 +13,8 @@ import type {
 } from "../lib/agents/types";
 import { runAgentWorkflow } from "../lib/agents/graph";
 import { useAiStore } from "./aiStore";
-
+import { useWorkspaceStore } from "./workspaceStore";
+import { useFileStore } from "./fileStore";
 interface AgentState {
   // ── State ──
   currentTask: AgentTaskState | null;
@@ -89,6 +90,30 @@ export const useAgentStore = create<AgentState>((set) => ({
   startTask: async (query: string) => {
     const taskId = `task-${Date.now()}`;
     const aiState = useAiStore.getState();
+    const workspacePath = useWorkspaceStore.getState().workspacePath;
+    const selectedFiles = useFileStore.getState().selectedFiles;
+
+    let fileContext = "";
+    if (selectedFiles.size > 0) {
+      try {
+        const { readTextFile } = await import("@tauri-apps/plugin-fs");
+        const contexts: string[] = [];
+        for (const filePath of selectedFiles) {
+          try {
+            const content = await readTextFile(filePath);
+            const relativePath = workspacePath
+              ? filePath.replace(workspacePath + "/", "")
+              : filePath;
+            contexts.push(`--- ${relativePath} ---\n${content.slice(0, 4000)}`);
+          } catch {
+            contexts.push(`--- ${filePath} --- (could not read)`);
+          }
+        }
+        fileContext = contexts.join("\n\n");
+      } catch {
+        // fs plugin not available
+      }
+    }
 
     // Initialize task state
     set({
@@ -150,7 +175,9 @@ export const useAgentStore = create<AgentState>((set) => ({
               };
             });
           });
-        }
+        },
+        workspacePath,
+        fileContext
       );
 
       // Task completed successfully

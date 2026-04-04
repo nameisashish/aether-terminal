@@ -2,7 +2,11 @@
 // usePty Hook
 // Manages PTY lifecycle for a single terminal
 // tab — creates PTY session, handles I/O,
-// resize, and cleanup.
+// resize, cleanup, and CWD detection.
+//
+// KEY UPGRADE: Now detects CWD changes via
+// OSC 7 escape codes and syncs with the
+// workspace/file explorer.
 // ==========================================
 
 import { useCallback, useEffect, useRef } from "react";
@@ -10,6 +14,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { Terminal, IDisposable } from "@xterm/xterm";
 import { useTerminalStore } from "../stores/terminalStore";
+import { useWorkspaceStore } from "../stores/workspaceStore";
+import { useFileStore } from "../stores/fileStore";
 
 interface UsePtyOptions {
   tabId: string;
@@ -28,6 +34,7 @@ interface PtyCreatedResponse {
  * - Creating the PTY on mount
  * - Writing terminal input to PTY
  * - Receiving PTY output and writing to xterm
+ * - Detecting CWD changes (OSC 7 + shell prompt parsing)
  * - Resizing PTY when terminal size changes
  * - Cleaning up on unmount
  */
@@ -39,25 +46,70 @@ export function usePty({ tabId, terminal, rows, cols }: UsePtyOptions) {
   const onDataDisposableRef = useRef<IDisposable | null>(null);
   const onBinaryDisposableRef = useRef<IDisposable | null>(null);
   const { setPtyId, setConnected } = useTerminalStore();
+  const { setWorkspacePath } = useWorkspaceStore();
+  const { loadDirectory, explorerOpen } = useFileStore();
+  const lastCwdRef = useRef<string | null>(null);
+
+  // ── Detect CWD from terminal output ──
+  const detectCwd = useCallback((data: string) => {
+    // Method 1: OSC 7 escape sequence (modern shells emit this)
+    // Format: \x1b]7;file:///path/to/dir\x07
+    const osc7Match = data.match(/\x1b\]7;file:\/\/[^/]*([^\x07\x1b]+)/);
+    if (osc7Match) {
+      const detectedPath = decodeURIComponent(osc7Match[1]);
+      if (detectedPath !== lastCwdRef.current) {
+        lastCwdRef.current = detectedPath;
+        setWorkspacePath(detectedPath);
+        if (explorerOpen) {
+          loadDirectory(detectedPath);
+        }
+      }
+      return;
+    }
+
+    // Method 2: Detect common shell prompt patterns with paths
+    // e.g., "user@host:~/projects/myapp$ " or "~/projects/myapp ❯ "
+    const promptPatterns = [
+      /(?:^|\n)\S*:([~\/][^\$#❯%>\n]+)\s*[\$#❯%>]\s*$/,
+      /(?:^|\n)([~\/][^\s❯%>]+)\s+[❯%>]\s*$/,
+    ];
+
+    for (const pattern of promptPatterns) {
+      const match = data.match(pattern);
+      if (match) {
+        let detectedPath = match[1].trim();
+        // Expand ~ to home dir
+        if (detectedPath.startsWith("~")) {
+          // We'll try to resolve ~ later
+          break;
+        }
+        if (detectedPath !== lastCwdRef.current && detectedPath.startsWith("/")) {
+          lastCwdRef.current = detectedPath;
+          setWorkspacePath(detectedPath);
+          if (explorerOpen) {
+            loadDirectory(detectedPath);
+          }
+        }
+        break;
+      }
+    }
+  }, [setWorkspacePath, loadDirectory, explorerOpen]);
 
   // ── Create PTY session ──
   const createPtySession = useCallback(async () => {
     if (!terminal) return;
-    // Guard: don't create if already destroyed or already has a session
     if (destroyedRef.current) return;
     if (ptyIdRef.current) return;
 
     try {
-      // Invoke Rust command to create a PTY
       const response = await invoke<PtyCreatedResponse>("create_pty", {
         request: {
           rows,
           cols,
-          cwd: null, // Use default home directory
+          cwd: null,
         },
       });
 
-      // Guard: check if component was unmounted during async call
       if (destroyedRef.current) {
         invoke("destroy_pty", { id: response.id }).catch(() => {});
         return;
@@ -72,6 +124,8 @@ export function usePty({ tabId, terminal, rows, cols }: UsePtyOptions) {
         `pty-output-${response.id}`,
         (event) => {
           terminal.write(event.payload);
+          // Detect CWD changes from output
+          detectCwd(event.payload);
         }
       );
 
@@ -122,7 +176,7 @@ export function usePty({ tabId, terminal, rows, cols }: UsePtyOptions) {
         `\r\n\x1b[31mFailed to create terminal session: ${err}\x1b[0m\r\n`
       );
     }
-  }, [terminal, rows, cols, tabId, setPtyId, setConnected]);
+  }, [terminal, rows, cols, tabId, setPtyId, setConnected, detectCwd]);
 
   // ── Resize PTY ──
   const resizePty = useCallback(
@@ -147,7 +201,6 @@ export function usePty({ tabId, terminal, rows, cols }: UsePtyOptions) {
   const destroyPty = useCallback(async () => {
     destroyedRef.current = true;
 
-    // Clean up terminal input disposables
     if (onDataDisposableRef.current) {
       onDataDisposableRef.current.dispose();
       onDataDisposableRef.current = null;
@@ -157,7 +210,6 @@ export function usePty({ tabId, terminal, rows, cols }: UsePtyOptions) {
       onBinaryDisposableRef.current = null;
     }
 
-    // Clean up event listeners
     if (unlistenOutputRef.current) {
       unlistenOutputRef.current();
       unlistenOutputRef.current = null;
@@ -167,7 +219,6 @@ export function usePty({ tabId, terminal, rows, cols }: UsePtyOptions) {
       unlistenExitRef.current = null;
     }
 
-    // Destroy the backend PTY session
     if (ptyIdRef.current) {
       try {
         await invoke("destroy_pty", { id: ptyIdRef.current });
@@ -188,7 +239,7 @@ export function usePty({ tabId, terminal, rows, cols }: UsePtyOptions) {
     return () => {
       destroyPty();
     };
-  }, [terminal]); // Only re-run when terminal instance changes
+  }, [terminal]);
 
   return { resizePty, destroyPty };
 }

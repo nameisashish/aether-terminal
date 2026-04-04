@@ -1,7 +1,10 @@
 // ==========================================
-// Main Layout Component
-// Full app shell: title bar, file explorer,
-// tab bar, terminals, AI chat, agents, status.
+// Main Layout Component — Full Integration
+// App shell with synced panels:
+// - File explorer (left)
+// - Terminal / File viewer (center)
+// - AI chat / Agent dashboard (right)
+// Everything syncs through workspace context.
 // ==========================================
 
 import { useEffect, useState } from "react";
@@ -12,17 +15,20 @@ import { Terminal } from "../terminal/Terminal";
 import { AiChatPanel } from "../ai/AiChatPanel";
 import { AgentDashboard } from "../agents/AgentDashboard";
 import { FileExplorer } from "../explorer/FileExplorer";
+import { FileViewer } from "../explorer/FileViewer";
 import { SettingsPanel } from "../settings/SettingsPanel";
 import { useTerminalStore, createTab } from "../../stores/terminalStore";
 import { useAiStore } from "../../stores/aiStore";
 import { useAgentStore } from "../../stores/agentStore";
 import { useFileStore } from "../../stores/fileStore";
+import { useWorkspaceStore } from "../../stores/workspaceStore";
 
 export function MainLayout() {
   const { tabs, activeTabId, addTab } = useTerminalStore();
   const { aiMode, toggleAiMode, chatPanelOpen } = useAiStore();
   const { dashboardOpen, setDashboardOpen } = useAgentStore();
   const { explorerOpen, setExplorerOpen } = useFileStore();
+  const { openFilePath } = useWorkspaceStore();
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   // ── Create initial terminal tab on mount ──
@@ -32,6 +38,8 @@ export function MainLayout() {
       addTab(tab);
     }
   }, []);
+
+  const isViewingFile = !!openFilePath;
 
   return (
     <div
@@ -58,7 +66,7 @@ export function MainLayout() {
       {/* Tab Bar */}
       <TerminalTabs />
 
-      {/* Main Content — file explorer + terminals + side panels */}
+      {/* Main Content — file explorer + terminal/viewer + side panels */}
       <div
         style={{
           flex: 1,
@@ -70,33 +78,49 @@ export function MainLayout() {
         {/* File Explorer (left sidebar) */}
         {explorerOpen && <FileExplorer />}
 
-        {/* Terminal Area */}
+        {/* Center: Terminal or File Viewer */}
         <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
-          {tabs.map((tab) => (
-            <Terminal
-              key={tab.id}
-              tabId={tab.id}
-              isActive={tab.id === activeTabId}
-            />
-          ))}
-
-          {tabs.length === 0 && (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                height: "100%",
-                color: "var(--text-muted)",
-                fontSize: "14px",
-                flexDirection: "column",
-                gap: "12px",
-              }}
-            >
-              <span style={{ fontSize: "28px", opacity: 0.3 }}>⌘</span>
-              <span>Press + to open a new terminal</span>
+          {/* File Viewer — shown when a file is open */}
+          {isViewingFile && (
+            <div style={{ height: "50%", borderBottom: "2px solid var(--border-subtle)" }}>
+              <FileViewer />
             </div>
           )}
+
+          {/* Terminals */}
+          <div
+            style={{
+              height: isViewingFile ? "50%" : "100%",
+              overflow: "hidden",
+              position: "relative",
+            }}
+          >
+            {tabs.map((tab) => (
+              <Terminal
+                key={tab.id}
+                tabId={tab.id}
+                isActive={tab.id === activeTabId}
+              />
+            ))}
+
+            {tabs.length === 0 && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  height: "100%",
+                  color: "var(--text-muted)",
+                  fontSize: "14px",
+                  flexDirection: "column",
+                  gap: "12px",
+                }}
+              >
+                <span style={{ fontSize: "28px", opacity: 0.3 }}>⌘</span>
+                <span>Press + to open a new terminal</span>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* AI Chat Panel (right side) */}

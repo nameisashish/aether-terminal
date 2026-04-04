@@ -1,12 +1,14 @@
 // ==========================================
-// AI Chat Panel Component — Dual-audience UX
+// AI Chat Panel Component — Full Integration
 // Side panel for AI chat with:
-// - Beginner-friendly onboarding prompts
-// - Power-user keyboard shortcuts
-// - Streaming responses with provider badges
+// - Full codebase access (reads/writes files)
+// - Agent team toggle for complex tasks
+// - File context from explorer selections
+// - Workspace-aware prompts
+// - Tool activity display
 // ==========================================
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   X,
@@ -16,16 +18,21 @@ import {
   User,
   Loader2,
   Sparkles,
+  Users,
+  FileCode,
 } from "lucide-react";
 import { useAiStore } from "../../stores/aiStore";
+import { useAgentStore } from "../../stores/agentStore";
+import { useWorkspaceStore } from "../../stores/workspaceStore";
+import { useFileStore } from "../../stores/fileStore";
 import { PROVIDER_INFO } from "../../lib/llm/types";
 
-/** Quick-start prompt suggestions for beginners */
+/** Quick-start prompt suggestions */
 const QUICK_PROMPTS = [
-  { label: "Explain my code", prompt: "Explain what this code does and suggest improvements" },
-  { label: "Debug an error", prompt: "Help me debug this error: " },
-  { label: "Write a test", prompt: "Write unit tests for " },
-  { label: "Optimize perf", prompt: "How can I optimize the performance of " },
+  { label: "📂 Analyze project", prompt: "Explore my project structure and tell me what this codebase does" },
+  { label: "🐛 Find bugs", prompt: "Search my code for potential bugs, security issues, or anti-patterns" },
+  { label: "🧪 Write tests", prompt: "Write comprehensive tests for my project" },
+  { label: "📝 Add docs", prompt: "Generate documentation for this project" },
 ];
 
 export function AiChatPanel() {
@@ -40,7 +47,14 @@ export function AiChatPanel() {
     clearMessages,
     clearError,
     apiKeys,
+    useAgentMode,
+    setUseAgentMode,
+    toolActivity,
   } = useAiStore();
+
+  const { startTask, setDashboardOpen } = useAgentStore();
+  const { workspacePath } = useWorkspaceStore();
+  const { selectedFiles } = useFileStore();
 
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -49,7 +63,7 @@ export function AiChatPanel() {
   // Auto-scroll to bottom on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages, toolActivity]);
 
   // Focus input when panel opens
   useEffect(() => {
@@ -69,12 +83,44 @@ export function AiChatPanel() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [chatPanelOpen, setChatPanelOpen]);
 
-  const handleSend = async () => {
+  // Build file context string from selected files
+  const buildFileContext = useCallback(async (): Promise<string> => {
+    if (selectedFiles.size === 0) return "";
+    const contexts: string[] = [];
+    try {
+      const { readTextFile } = await import("@tauri-apps/plugin-fs");
+      for (const filePath of selectedFiles) {
+        try {
+          const content = await readTextFile(filePath);
+          const relativePath = workspacePath
+            ? filePath.replace(workspacePath + "/", "")
+            : filePath;
+          contexts.push(`--- ${relativePath} ---\n${content.slice(0, 4000)}`);
+        } catch {
+          contexts.push(`--- ${filePath} --- (could not read)`);
+        }
+      }
+    } catch {
+      // fs plugin not available
+    }
+    return contexts.join("\n\n");
+  }, [selectedFiles, workspacePath]);
+
+  const handleSend = useCallback(async () => {
     const trimmed = input.trim();
     if (!trimmed || isStreaming) return;
     setInput("");
-    await sendMessage(trimmed);
-  };
+
+    if (useAgentMode) {
+      // Route to agent system
+      setDashboardOpen(true);
+      startTask(trimmed);
+    } else {
+      // Route to AI chat with tools
+      const fileContext = await buildFileContext();
+      await sendMessage(trimmed, workspacePath, fileContext);
+    }
+  }, [input, isStreaming, useAgentMode, workspacePath, buildFileContext, sendMessage, startTask, setDashboardOpen]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -92,9 +138,9 @@ export function AiChatPanel() {
     <AnimatePresence>
       <motion.div
         initial={{ width: 0, opacity: 0 }}
-        animate={{ width: 420, opacity: 1 }}
+        animate={{ width: 380, opacity: 1 }}
         exit={{ width: 0, opacity: 0 }}
-        transition={{ duration: 0.2, ease: "easeInOut" }}
+        transition={{ duration: 0.2 }}
         style={{
           height: "100%",
           display: "flex",
@@ -104,7 +150,7 @@ export function AiChatPanel() {
           overflow: "hidden",
         }}
       >
-        {/* ── Header ── */}
+        {/* Header */}
         <div
           style={{
             display: "flex",
@@ -117,41 +163,25 @@ export function AiChatPanel() {
         >
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
             <Sparkles size={16} style={{ color: "var(--accent)" }} />
-            <span
-              style={{
-                fontSize: "13px",
-                fontWeight: 600,
-                color: "var(--text-primary)",
-              }}
-            >
+            <span style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-primary)" }}>
               Aether AI
             </span>
-            <span
-              style={{
-                fontSize: "11px",
-                padding: "1px 6px",
-                borderRadius: "4px",
-                background: providerInfo.color + "20",
-                color: providerInfo.color,
-                fontWeight: 500,
-              }}
-            >
-              {providerInfo.name}
-            </span>
+            {isStreaming && (
+              <Loader2 size={12} style={{ color: "var(--accent)" }} className="animate-spin" />
+            )}
           </div>
           <div style={{ display: "flex", gap: "4px" }}>
             <button
               className="icon-btn"
               onClick={clearMessages}
-              title="Clear chat (⌘ K)"
+              title="Clear chat"
               style={{ width: "28px", height: "28px" }}
             >
-              <Trash2 size={14} />
+              <Trash2 size={13} />
             </button>
             <button
               className="icon-btn"
               onClick={() => setChatPanelOpen(false)}
-              title="Close (Esc)"
               style={{ width: "28px", height: "28px" }}
             >
               <X size={14} />
@@ -159,7 +189,107 @@ export function AiChatPanel() {
           </div>
         </div>
 
-        {/* ── Messages List ── */}
+        {/* Mode toggle bar */}
+        <div
+          style={{
+            display: "flex",
+            gap: "2px",
+            padding: "6px 12px",
+            borderBottom: "1px solid var(--border-subtle)",
+            flexShrink: 0,
+          }}
+        >
+          <button
+            onClick={() => setUseAgentMode(false)}
+            style={{
+              flex: 1,
+              padding: "5px 10px",
+              borderRadius: "6px",
+              fontSize: "11px",
+              fontWeight: 600,
+              cursor: "pointer",
+              border: "none",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "4px",
+              background: !useAgentMode ? "var(--accent-muted)" : "transparent",
+              color: !useAgentMode ? "var(--accent)" : "var(--text-muted)",
+              transition: "all 0.15s",
+            }}
+          >
+            <Sparkles size={11} />
+            AI Chat
+          </button>
+          <button
+            onClick={() => setUseAgentMode(true)}
+            style={{
+              flex: 1,
+              padding: "5px 10px",
+              borderRadius: "6px",
+              fontSize: "11px",
+              fontWeight: 600,
+              cursor: "pointer",
+              border: "none",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "4px",
+              background: useAgentMode ? "var(--accent-muted)" : "transparent",
+              color: useAgentMode ? "var(--accent)" : "var(--text-muted)",
+              transition: "all 0.15s",
+            }}
+          >
+            <Users size={11} />
+            Agent Team
+          </button>
+        </div>
+
+        {/* Workspace context bar */}
+        {workspacePath && (
+          <div
+            style={{
+              padding: "4px 14px",
+              fontSize: "10px",
+              color: "var(--text-muted)",
+              background: "rgba(124, 92, 252, 0.04)",
+              borderBottom: "1px solid var(--border-subtle)",
+              display: "flex",
+              alignItems: "center",
+              gap: "4px",
+              flexShrink: 0,
+            }}
+          >
+            <FileCode size={10} style={{ color: "var(--accent)" }} />
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {workspacePath.split("/").pop()} — AI has codebase access
+            </span>
+            {selectedFiles.size > 0 && (
+              <span style={{ color: "var(--accent)", fontWeight: 600 }}>
+                · {selectedFiles.size} files selected
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* API key warning */}
+        {!hasApiKey && (
+          <div
+            style={{
+              margin: "8px 14px",
+              padding: "8px 12px",
+              borderRadius: "8px",
+              background: "rgba(248, 113, 113, 0.08)",
+              border: "1px solid rgba(248, 113, 113, 0.2)",
+              fontSize: "12px",
+              color: "var(--red)",
+            }}
+          >
+            No API key for {providerInfo.name}. Go to Settings → API Keys.
+          </div>
+        )}
+
+        {/* Messages */}
         <div
           style={{
             flex: 1,
@@ -170,7 +300,6 @@ export function AiChatPanel() {
             gap: "12px",
           }}
         >
-          {/* Onboarding — shown when no messages yet */}
           {messages.length === 0 && (
             <div
               style={{
@@ -180,40 +309,47 @@ export function AiChatPanel() {
                 justifyContent: "center",
                 height: "100%",
                 gap: "16px",
-                color: "var(--text-muted)",
+                padding: "20px",
               }}
             >
-              <Bot size={32} strokeWidth={1.5} style={{ opacity: 0.4 }} />
-              <span style={{ fontSize: "13px", fontWeight: 500, color: "var(--text-secondary)" }}>
-                Ask Aether anything
+              <Sparkles size={28} strokeWidth={1.5} style={{ opacity: 0.3, color: "var(--accent)" }} />
+              <span style={{ fontSize: "13px", color: "var(--text-muted)", textAlign: "center" }}>
+                {useAgentMode
+                  ? "Describe a task for the 8-agent team"
+                  : "Ask me anything about your code"}
               </span>
-              <span style={{ fontSize: "11px", opacity: 0.6 }}>
-                {providerInfo.name} · {config.model}
+              <span style={{ fontSize: "11px", color: "var(--text-muted)", opacity: 0.6, textAlign: "center" }}>
+                {useAgentMode
+                  ? "Agents will read your code, make changes, and ask for approval"
+                  : "I can read files, write code, and run commands in your project"}
               </span>
 
-              {/* Quick prompts for beginners */}
+              {/* Quick prompts */}
               <div
                 style={{
-                  display: "flex",
-                  flexWrap: "wrap",
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
                   gap: "6px",
-                  justifyContent: "center",
-                  marginTop: "8px",
-                  maxWidth: "320px",
+                  width: "100%",
+                  maxWidth: "300px",
                 }}
               >
                 {QUICK_PROMPTS.map((qp) => (
                   <button
                     key={qp.label}
-                    onClick={() => setInput(qp.prompt)}
+                    onClick={() => {
+                      setInput(qp.prompt);
+                      inputRef.current?.focus();
+                    }}
                     style={{
-                      padding: "4px 10px",
-                      borderRadius: "6px",
-                      fontSize: "11px",
+                      padding: "8px 10px",
+                      borderRadius: "8px",
                       border: "1px solid var(--border-subtle)",
                       background: "var(--bg-tertiary)",
                       color: "var(--text-secondary)",
+                      fontSize: "11px",
                       cursor: "pointer",
+                      textAlign: "left",
                       transition: "all 0.15s",
                     }}
                     onMouseEnter={(e) => {
@@ -228,11 +364,6 @@ export function AiChatPanel() {
                     {qp.label}
                   </button>
                 ))}
-              </div>
-
-              {/* Keyboard shortcut hint */}
-              <div style={{ fontSize: "10px", opacity: 0.4, marginTop: "12px" }}>
-                Enter to send · Shift+Enter for newline · Esc to close
               </div>
             </div>
           )}
@@ -260,95 +391,87 @@ export function AiChatPanel() {
                     msg.role === "user"
                       ? "var(--bg-hover)"
                       : "var(--accent-muted)",
-                  color:
-                    msg.role === "user"
-                      ? "var(--text-secondary)"
-                      : "var(--accent)",
                 }}
               >
                 {msg.role === "user" ? (
-                  <User size={13} />
+                  <User size={12} style={{ color: "var(--text-secondary)" }} />
                 ) : (
-                  <Bot size={13} />
+                  <Bot size={12} style={{ color: "var(--accent)" }} />
                 )}
               </div>
 
-              {/* Message body */}
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div
-                  style={{
-                    fontSize: "13px",
-                    lineHeight: "1.6",
-                    color: "var(--text-primary)",
-                    whiteSpace: "pre-wrap",
-                    wordBreak: "break-word",
-                    fontFamily: "var(--font-sans)",
-                  }}
-                >
-                  {msg.content}
-                  {msg.isStreaming && (
-                    <span
-                      style={{
-                        display: "inline-block",
-                        width: "6px",
-                        height: "14px",
-                        background: "var(--accent)",
-                        marginLeft: "2px",
-                        animation: "blink 1s infinite",
-                        verticalAlign: "text-bottom",
-                      }}
-                    />
-                  )}
-                </div>
-                {msg.role === "assistant" && !msg.isStreaming && msg.model && (
+              {/* Message content */}
+              <div
+                style={{
+                  flex: 1,
+                  fontSize: "13px",
+                  lineHeight: "1.6",
+                  color: "var(--text-primary)",
+                  whiteSpace: "pre-wrap",
+                  wordBreak: "break-word",
+                  fontFamily: "var(--font-sans)",
+                }}
+              >
+                {msg.content}
+                {msg.isStreaming && (
+                  <span
+                    style={{
+                      display: "inline-block",
+                      width: "6px",
+                      height: "14px",
+                      background: "var(--accent)",
+                      borderRadius: "1px",
+                      marginLeft: "2px",
+                      animation: "blink 1s infinite",
+                    }}
+                  />
+                )}
+                {/* Provider badge */}
+                {msg.role === "assistant" && msg.provider && !msg.isStreaming && (
                   <div
                     style={{
+                      marginTop: "6px",
                       fontSize: "10px",
                       color: "var(--text-muted)",
-                      marginTop: "4px",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "4px",
                     }}
                   >
-                    {msg.model}
+                    <span style={{ color: PROVIDER_INFO[msg.provider]?.color || "var(--text-muted)" }}>
+                      {PROVIDER_INFO[msg.provider]?.name || msg.provider}
+                    </span>
+                    <span>·</span>
+                    <span>{msg.model}</span>
                   </div>
                 )}
               </div>
             </div>
           ))}
 
+          {/* Error display */}
+          {error && (
+            <div
+              style={{
+                padding: "8px 12px",
+                borderRadius: "8px",
+                background: "rgba(248, 113, 113, 0.08)",
+                border: "1px solid rgba(248, 113, 113, 0.2)",
+                fontSize: "12px",
+                color: "var(--red)",
+                cursor: "pointer",
+              }}
+              onClick={clearError}
+            >
+              {error}
+              <span style={{ opacity: 0.5, marginLeft: "8px" }}>click to dismiss</span>
+            </div>
+          )}
+
           <div ref={messagesEndRef} />
         </div>
 
-        {/* ── Error Banner ── */}
-        {error && (
-          <div
-            style={{
-              padding: "8px 14px",
-              background: "rgba(248, 113, 113, 0.1)",
-              borderTop: "1px solid rgba(248, 113, 113, 0.2)",
-              fontSize: "12px",
-              color: "var(--red)",
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-            }}
-          >
-            <span>{error}</span>
-            <button
-              onClick={clearError}
-              style={{
-                background: "none",
-                border: "none",
-                color: "var(--red)",
-                cursor: "pointer",
-                padding: "2px",
-              }}
-            >
-              <X size={12} />
-            </button>
-          </div>
-        )}
-
-        {/* ── Input Area ── */}
+        {/* Input Area */}
         <div
           style={{
             padding: "10px 12px",
@@ -356,87 +479,76 @@ export function AiChatPanel() {
             flexShrink: 0,
           }}
         >
-          {!hasApiKey ? (
-            <div
+          <div style={{ display: "flex", gap: "4px", alignItems: "flex-end" }}>
+            <textarea
+              ref={inputRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={
+                useAgentMode
+                  ? "Describe a task for the agents..."
+                  : "Ask about your code..."
+              }
+              disabled={isStreaming}
+              rows={1}
               style={{
-                fontSize: "12px",
-                color: "var(--text-muted)",
-                textAlign: "center",
-                padding: "8px",
+                flex: 1,
+                resize: "none",
+                background: "var(--bg-tertiary)",
+                border: "1px solid var(--border-subtle)",
+                borderRadius: "8px",
+                padding: "8px 12px",
+                fontSize: "13px",
+                color: "var(--text-primary)",
+                fontFamily: "var(--font-sans)",
+                outline: "none",
+                maxHeight: "80px",
                 lineHeight: "1.5",
               }}
-            >
-              Add your {providerInfo.name} API key in{" "}
-              <span style={{ color: "var(--accent)", fontWeight: 500 }}>
-                Settings → API Keys
-              </span>{" "}
-              to start chatting.
-              <br />
-              <span style={{ fontSize: "10px", opacity: 0.6 }}>
-                Keys are stored locally and never leave your device.
-              </span>
-            </div>
-          ) : (
-            <div
+              onInput={(e) => {
+                const t = e.target as HTMLTextAreaElement;
+                t.style.height = "auto";
+                t.style.height = Math.min(t.scrollHeight, 80) + "px";
+              }}
+              onFocus={(e) => {
+                (e.target as HTMLElement).style.borderColor = "var(--accent)";
+              }}
+              onBlur={(e) => {
+                (e.target as HTMLElement).style.borderColor = "var(--border-subtle)";
+              }}
+            />
+            <button
+              className="btn btn-primary"
+              onClick={handleSend}
+              disabled={!input.trim() || isStreaming}
               style={{
-                display: "flex",
-                gap: "8px",
-                alignItems: "flex-end",
+                padding: "8px",
+                borderRadius: "8px",
+                opacity: !input.trim() || isStreaming ? 0.5 : 1,
               }}
             >
-              <textarea
-                ref={inputRef}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Ask Aether..."
-                disabled={isStreaming}
-                rows={1}
-                style={{
-                  flex: 1,
-                  resize: "none",
-                  background: "var(--bg-tertiary)",
-                  border: "1px solid var(--border-subtle)",
-                  borderRadius: "8px",
-                  padding: "8px 12px",
-                  fontSize: "13px",
-                  color: "var(--text-primary)",
-                  fontFamily: "var(--font-sans)",
-                  outline: "none",
-                  maxHeight: "120px",
-                  lineHeight: "1.5",
-                }}
-                onInput={(e) => {
-                  const target = e.target as HTMLTextAreaElement;
-                  target.style.height = "auto";
-                  target.style.height =
-                    Math.min(target.scrollHeight, 120) + "px";
-                }}
-                onFocus={(e) => {
-                  (e.target as HTMLElement).style.borderColor = "var(--accent)";
-                }}
-                onBlur={(e) => {
-                  (e.target as HTMLElement).style.borderColor = "var(--border-subtle)";
-                }}
-              />
-              <button
-                className="btn-primary btn"
-                onClick={handleSend}
-                disabled={!input.trim() || isStreaming}
-                style={{
-                  padding: "8px",
-                  borderRadius: "8px",
-                  opacity: !input.trim() || isStreaming ? 0.5 : 1,
-                }}
-              >
-                {isStreaming ? (
-                  <Loader2 size={16} className="animate-spin" />
-                ) : (
-                  <Send size={16} />
-                )}
-              </button>
-            </div>
-          )}
+              {isStreaming ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : (
+                <Send size={16} />
+              )}
+            </button>
+          </div>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              marginTop: "4px",
+              fontSize: "10px",
+              color: "var(--text-muted)",
+            }}
+          >
+            <span>Shift+Enter for newline</span>
+            <span>
+              {useAgentMode ? "🤖 Agent mode" : "💬 AI + Tools"}
+            </span>
+          </div>
         </div>
       </motion.div>
     </AnimatePresence>

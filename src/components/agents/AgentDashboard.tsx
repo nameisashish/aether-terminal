@@ -1,8 +1,8 @@
 // ==========================================
-// Agent Dashboard Component
+// Agent Dashboard Component — Live Activity
 // Shows status of all agents, execution steps,
-// and the current task progress. Features live
-// streaming activity feed.
+// current task progress, and live tool activity
+// (which files are being read/written).
 // ==========================================
 
 import { useState, useRef, useEffect } from "react";
@@ -18,8 +18,13 @@ import {
   XCircle,
   ChevronDown,
   ChevronUp,
+  FileCode,
+  Terminal,
+  Search,
+  Wrench,
 } from "lucide-react";
 import { useAgentStore } from "../../stores/agentStore";
+import { useWorkspaceStore } from "../../stores/workspaceStore";
 import { ApprovalDialog } from "./ApprovalDialog";
 import { AGENTS, type AgentRole, type AgentStatus } from "../../lib/agents/types";
 
@@ -32,6 +37,15 @@ const STATUS_ICONS: Record<AgentStatus, React.ReactNode> = {
   error: <XCircle size={12} style={{ color: "var(--red)" }} />,
 };
 
+/** Get icon for tool operation */
+function getToolIcon(action: string) {
+  if (action.includes("read") || action.includes("Reading")) return <FileCode size={10} style={{ color: "var(--blue)" }} />;
+  if (action.includes("write") || action.includes("Writing") || action.includes("Creating")) return <FileCode size={10} style={{ color: "var(--green)" }} />;
+  if (action.includes("command") || action.includes("Running")) return <Terminal size={10} style={{ color: "var(--yellow)" }} />;
+  if (action.includes("search") || action.includes("Searching")) return <Search size={10} style={{ color: "var(--cyan, #22d3ee)" }} />;
+  return <Wrench size={10} style={{ color: "var(--text-muted)" }} />;
+}
+
 export function AgentDashboard() {
   const {
     currentTask,
@@ -41,6 +55,7 @@ export function AgentDashboard() {
     cancelTask,
   } = useAgentStore();
 
+  const { workspacePath } = useWorkspaceStore();
   const [input, setInput] = useState("");
   const [expandedSteps, setExpandedSteps] = useState<Set<string>>(new Set());
   const activityRef = useRef<HTMLDivElement>(null);
@@ -72,9 +87,13 @@ export function AgentDashboard() {
 
   // Get latest status per agent
   const agentStatuses: Partial<Record<AgentRole, AgentStatus>> = {};
+  const agentCurrentAction: Partial<Record<AgentRole, string>> = {};
   if (currentTask) {
     for (const step of currentTask.steps) {
       agentStatuses[step.agentRole] = step.status;
+      if (step.status === "working" || step.status === "thinking") {
+        agentCurrentAction[step.agentRole] = step.action;
+      }
     }
   }
 
@@ -133,6 +152,26 @@ export function AgentDashboard() {
             </button>
           </div>
 
+          {/* Workspace context */}
+          {workspacePath && (
+            <div
+              style={{
+                padding: "4px 14px",
+                fontSize: "10px",
+                color: "var(--text-muted)",
+                background: "rgba(124, 92, 252, 0.04)",
+                borderBottom: "1px solid var(--border-subtle)",
+                display: "flex",
+                alignItems: "center",
+                gap: "4px",
+                flexShrink: 0,
+              }}
+            >
+              <FileCode size={10} style={{ color: "var(--accent)" }} />
+              Working in: {workspacePath.split("/").pop()}
+            </div>
+          )}
+
           {/* Agent Status Grid */}
           <div
             style={{
@@ -147,9 +186,11 @@ export function AgentDashboard() {
             {(Object.entries(AGENTS) as [AgentRole, typeof AGENTS[AgentRole]][]).map(
               ([role, info]) => {
                 const status = agentStatuses[role] || "idle";
+                const currentAction = agentCurrentAction[role];
                 return (
                   <div
                     key={role}
+                    title={currentAction || info.name}
                     style={{
                       display: "flex",
                       alignItems: "center",
@@ -177,6 +218,10 @@ export function AgentDashboard() {
                             ? "var(--text-primary)"
                             : "var(--text-muted)",
                         fontWeight: status !== "idle" ? 500 : 400,
+                        flex: 1,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
                       }}
                     >
                       {info.name}
@@ -215,8 +260,8 @@ export function AgentDashboard() {
                 <span style={{ fontSize: "13px" }}>
                   Describe a task for the agent team
                 </span>
-                <span style={{ fontSize: "11px", opacity: 0.6 }}>
-                  e.g. "Build a REST API with Express"
+                <span style={{ fontSize: "11px", opacity: 0.6, textAlign: "center", padding: "0 20px" }}>
+                  Agents will read your codebase, make changes, and ask for your approval before modifying files
                 </span>
               </div>
             )}
@@ -247,6 +292,7 @@ export function AgentDashboard() {
                   >
                     <span>{agentInfo.icon}</span>
                     {STATUS_ICONS[step.status]}
+                    {getToolIcon(step.action)}
                     <span
                       style={{
                         flex: 1,

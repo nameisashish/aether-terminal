@@ -42,6 +42,7 @@ Aether Terminal is designed by engineers, for engineers. Whether you're a Staff+
 | **8-Agent Team** | Supervisor, Architect, Coder, Reviewer, Tester, QA, Documenter, Deployer |
 | **Human-in-the-Loop** | Risk-graded approval dialogs for file writes and shell commands |
 | **File Explorer** | Sidebar file tree with AI context selection |
+| **File Viewer** | Built-in code viewer tab showing file contents |
 | **Multi-Tab** | GPU-accelerated (WebGL) terminal tabs |
 | **Cross-Platform** | macOS, Windows, Linux via Tauri v2 native builds |
 | **Keyboard-First** | Enter/Esc approvals, ⌘T new tab, Escape to close panels |

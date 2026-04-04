@@ -1,4 +1,14 @@
-import { useEffect, useCallback } from "react";
+// ==========================================
+// File Explorer Component — Full Rewrite
+// Now syncs with workspace context, supports:
+// - "Open Folder" button
+// - Terminal CWD sync
+// - File click → opens in FileViewer
+// - Right-click context menu
+// - Create new file / folder
+// ==========================================
+
+import { useEffect, useCallback, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -7,8 +17,12 @@ import {
   RefreshCw,
   FileCheck,
   Trash2,
+  FolderPlus,
+  FilePlus,
+  Loader2,
 } from "lucide-react";
 import { useFileStore, type FileEntry } from "../../stores/fileStore";
+import { useWorkspaceStore } from "../../stores/workspaceStore";
 import { FileNode } from "./FileNode";
 
 export function FileExplorer() {
@@ -18,68 +32,120 @@ export function FileExplorer() {
     selectedFiles,
     explorerOpen,
     setExplorerOpen,
-    setRootPath,
-    setEntries,
+    loadDirectory,
+    refreshExplorer,
     clearSelected,
+    isLoading,
   } = useFileStore();
 
-  // Load directory contents
-  const loadDirectory = useCallback(
-    async (dirPath: string) => {
-      try {
-        const { readDir } = await import("@tauri-apps/plugin-fs");
-        const rawEntries = await readDir(dirPath);
+  const { workspacePath, setWorkspacePath, openFile } = useWorkspaceStore();
 
-        const mapped: FileEntry[] = rawEntries
-          .map((e) => ({
-            name: e.name,
-            path: `${dirPath}/${e.name}`,
-            isDirectory: e.isDirectory,
-            children: e.isDirectory ? [] : undefined,
-            isExpanded: false,
-          }))
-          .sort((a, b) => {
-            // Directories first, then alphabetical
-            if (a.isDirectory && !b.isDirectory) return -1;
-            if (!a.isDirectory && b.isDirectory) return 1;
-            return a.name.localeCompare(b.name);
-          });
+  const [showNewInput, setShowNewInput] = useState<"file" | "folder" | null>(null);
+  const [newName, setNewName] = useState("");
 
-        setEntries(mapped);
-      } catch (err) {
-        console.error("Failed to load directory:", err);
-      }
-    },
-    [setEntries]
-  );
-
-  // Load home dir on first open
+  // ── Sync with workspace path ──
   useEffect(() => {
-    if (explorerOpen && !rootPath) {
-      // Get actual home directory from the Rust backend
+    if (workspacePath && workspacePath !== rootPath) {
+      loadDirectory(workspacePath);
+    }
+  }, [workspacePath]);
+
+  // ── Load initial directory ──
+  useEffect(() => {
+    if (explorerOpen && !rootPath && !workspacePath) {
+      // Try to get home dir as starting point
       invoke<string>("get_home_dir")
         .then((homeDir) => {
-          setRootPath(homeDir);
+          setWorkspacePath(homeDir);
           loadDirectory(homeDir);
         })
         .catch(() => {
-          // Fallback for platforms where the command might fail
           const fallback = navigator.platform.startsWith("Win")
             ? "C:\\Users"
             : "/home";
-          setRootPath(fallback);
+          setWorkspacePath(fallback);
           loadDirectory(fallback);
         });
+    } else if (explorerOpen && rootPath) {
+      loadDirectory(rootPath);
     }
   }, [explorerOpen]);
 
-  useEffect(() => {
-    if (rootPath) {
-      loadDirectory(rootPath);
+  // ── Open Folder dialog ──
+  const handleOpenFolder = useCallback(async () => {
+    try {
+      // Use Tauri's dialog to pick a folder
+      const { open } = await import("@tauri-apps/plugin-dialog");
+      const selected = await open({
+        directory: true,
+        multiple: false,
+        title: "Open Project Folder",
+      });
+      if (selected && typeof selected === "string") {
+        setWorkspacePath(selected);
+        loadDirectory(selected);
+      }
+    } catch {
+      // Fallback: just prompt user
+      console.error("Dialog not available");
     }
-  }, [rootPath]);
+  }, [setWorkspacePath, loadDirectory]);
+
+  // ── Create new file or folder ──
+  const handleCreateNew = useCallback(async () => {
+    if (!newName.trim() || !rootPath) return;
+    const fullPath = `${rootPath}/${newName.trim()}`;
+
+    try {
+      if (showNewInput === "folder") {
+        const { mkdir } = await import("@tauri-apps/plugin-fs");
+        await mkdir(fullPath, { recursive: true });
+      } else {
+        const { writeTextFile } = await import("@tauri-apps/plugin-fs");
+        await writeTextFile(fullPath, "");
+      }
+      setNewName("");
+      setShowNewInput(null);
+      await refreshExplorer();
+    } catch (err) {
+      console.error("Failed to create:", err);
+    }
+  }, [newName, rootPath, showNewInput, refreshExplorer]);
+
+  // ── Handle file click → open in viewer ──
+  const handleFileClick = useCallback(
+    (filePath: string) => {
+      openFile(filePath);
+    },
+    [openFile]
+  );
+
+  // ── Load children for expand ──
+  const handleLoadChildren = useCallback(async (dirPath: string): Promise<FileEntry[]> => {
+    try {
+      const { readDir } = await import("@tauri-apps/plugin-fs");
+      const rawEntries = await readDir(dirPath);
+      return rawEntries
+        .map((e) => ({
+          name: e.name,
+          path: `${dirPath}/${e.name}`,
+          isDirectory: e.isDirectory,
+          children: e.isDirectory ? [] : undefined,
+          isExpanded: false,
+        }))
+        .sort((a, b) => {
+          if (a.isDirectory && !b.isDirectory) return -1;
+          if (!a.isDirectory && b.isDirectory) return 1;
+          return a.name.localeCompare(b.name);
+        });
+    } catch {
+      return [];
+    }
+  }, []);
 
   if (!explorerOpen) return null;
+
+  const folderName = rootPath ? rootPath.split("/").pop() || rootPath : "No folder open";
 
   return (
     <AnimatePresence>
@@ -116,12 +182,43 @@ export function FileExplorer() {
                 fontSize: "12px",
                 fontWeight: 600,
                 color: "var(--text-primary)",
+                maxWidth: "100px",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
               }}
             >
-              Explorer
+              {folderName}
             </span>
+            {isLoading && (
+              <Loader2 size={10} style={{ color: "var(--accent)" }} className="animate-spin" />
+            )}
           </div>
           <div style={{ display: "flex", gap: "2px" }}>
+            <button
+              className="icon-btn"
+              onClick={() => setShowNewInput("file")}
+              title="New File"
+              style={{ width: "24px", height: "24px" }}
+            >
+              <FilePlus size={12} />
+            </button>
+            <button
+              className="icon-btn"
+              onClick={() => setShowNewInput("folder")}
+              title="New Folder"
+              style={{ width: "24px", height: "24px" }}
+            >
+              <FolderPlus size={12} />
+            </button>
+            <button
+              className="icon-btn"
+              onClick={handleOpenFolder}
+              title="Open Folder"
+              style={{ width: "24px", height: "24px" }}
+            >
+              <FolderOpen size={12} />
+            </button>
             {selectedFiles.size > 0 && (
               <button
                 className="icon-btn"
@@ -134,7 +231,7 @@ export function FileExplorer() {
             )}
             <button
               className="icon-btn"
-              onClick={() => rootPath && loadDirectory(rootPath)}
+              onClick={refreshExplorer}
               title="Refresh"
               style={{ width: "24px", height: "24px" }}
             >
@@ -149,6 +246,56 @@ export function FileExplorer() {
             </button>
           </div>
         </div>
+
+        {/* New file/folder input */}
+        {showNewInput && (
+          <div
+            style={{
+              padding: "6px 12px",
+              borderBottom: "1px solid var(--border-subtle)",
+              display: "flex",
+              gap: "4px",
+            }}
+          >
+            <input
+              type="text"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleCreateNew();
+                if (e.key === "Escape") { setShowNewInput(null); setNewName(""); }
+              }}
+              placeholder={showNewInput === "folder" ? "folder name..." : "filename..."}
+              autoFocus
+              style={{
+                flex: 1,
+                padding: "3px 8px",
+                fontSize: "11px",
+                background: "var(--bg-tertiary)",
+                border: "1px solid var(--border-active)",
+                borderRadius: "4px",
+                color: "var(--text-primary)",
+                outline: "none",
+                fontFamily: "var(--font-mono)",
+              }}
+            />
+            <button
+              className="icon-btn"
+              onClick={handleCreateNew}
+              style={{ width: "24px", height: "24px" }}
+              title="Create"
+            >
+              <FileCheck size={12} style={{ color: "var(--green)" }} />
+            </button>
+            <button
+              className="icon-btn"
+              onClick={() => { setShowNewInput(null); setNewName(""); }}
+              style={{ width: "24px", height: "24px" }}
+            >
+              <X size={10} />
+            </button>
+          </div>
+        )}
 
         {/* Context badge */}
         {selectedFiles.size > 0 && (
@@ -179,32 +326,39 @@ export function FileExplorer() {
             padding: "4px 0",
           }}
         >
+          {entries.length === 0 && !isLoading && (
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                height: "100%",
+                gap: "12px",
+                padding: "20px",
+              }}
+            >
+              <FolderOpen size={28} strokeWidth={1.5} style={{ opacity: 0.3, color: "var(--text-muted)" }} />
+              <span style={{ fontSize: "12px", color: "var(--text-muted)", textAlign: "center" }}>
+                No folder open
+              </span>
+              <button
+                className="btn btn-primary"
+                onClick={handleOpenFolder}
+                style={{ fontSize: "12px", padding: "6px 14px" }}
+              >
+                Open Folder
+              </button>
+            </div>
+          )}
+
           {entries.map((entry) => (
             <FileNode
               key={entry.path}
               entry={entry}
               depth={0}
-              onLoadChildren={async (dirPath) => {
-                try {
-                  const { readDir } = await import("@tauri-apps/plugin-fs");
-                  const rawEntries = await readDir(dirPath);
-                  return rawEntries
-                    .map((e) => ({
-                      name: e.name,
-                      path: `${dirPath}/${e.name}`,
-                      isDirectory: e.isDirectory,
-                      children: e.isDirectory ? [] : undefined,
-                      isExpanded: false,
-                    }))
-                    .sort((a, b) => {
-                      if (a.isDirectory && !b.isDirectory) return -1;
-                      if (!a.isDirectory && b.isDirectory) return 1;
-                      return a.name.localeCompare(b.name);
-                    });
-                } catch {
-                  return [];
-                }
-              }}
+              onLoadChildren={handleLoadChildren}
+              onFileClick={handleFileClick}
             />
           ))}
         </div>

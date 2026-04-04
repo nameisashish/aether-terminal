@@ -514,11 +514,20 @@ export async function runAgentWorkflow(
   config: LLMConfig,
   apiKeys: ApiKeys,
   onStep: (step: AgentStep) => void,
-  onApproval: (approval: PendingApproval) => Promise<boolean>
+  onApproval: (approval: PendingApproval) => Promise<boolean>,
+  workspacePath?: string | null,
+  fileContext?: string
 ): Promise<string> {
   // ── Step 1: Supervisor creates the plan ──
+  let contextInjection = "";
+  if (workspacePath) {
+    contextInjection += `\n\nCURRENT WORKSPACE: ${workspacePath}`;
+  }
+  if (fileContext) {
+    contextInjection += `\n\nFILES IN CONTEXT (selected by user):\n${fileContext}`;
+  }
   const supervisorMessages: BaseMessage[] = [
-    new SystemMessage(AGENT_PROMPTS.supervisor),
+    new SystemMessage(AGENT_PROMPTS.supervisor + contextInjection),
     new HumanMessage(query),
   ];
 
@@ -554,7 +563,7 @@ export async function runAgentWorkflow(
     if (group.length === 1) {
       const { agent, task } = group[0];
       const messages: BaseMessage[] = [
-        new SystemMessage(AGENT_PROMPTS[agent]),
+        new SystemMessage(AGENT_PROMPTS[agent] + contextInjection),
         new SystemMessage(`Context from the workflow so far:\n${accumulatedContext}`),
         new HumanMessage(task),
       ];
@@ -566,7 +575,7 @@ export async function runAgentWorkflow(
     } else {
       const promises = group.map(async ({ agent, task }) => {
         const messages: BaseMessage[] = [
-          new SystemMessage(AGENT_PROMPTS[agent]),
+          new SystemMessage(AGENT_PROMPTS[agent] + contextInjection),
           new SystemMessage(`Context from the workflow so far:\n${accumulatedContext}`),
           new HumanMessage(task),
         ];
@@ -586,7 +595,7 @@ export async function runAgentWorkflow(
 
   // ── Step 3: Supervisor synthesizes final result ──
   const summaryMessages: BaseMessage[] = [
-    new SystemMessage(AGENT_PROMPTS.supervisor),
+    new SystemMessage(AGENT_PROMPTS.supervisor + contextInjection),
     new HumanMessage(query),
     new AIMessage(plan),
     new HumanMessage(`The agents have completed their tasks. Here are the results:

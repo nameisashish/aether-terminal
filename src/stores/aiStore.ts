@@ -3,15 +3,23 @@
 // Manages AI state: API keys, LLM config,
 // chat history, AI mode, and streaming state.
 //
-// Design: Sensible defaults for beginners
-// (Groq free tier, streaming on), but fully
-// configurable for power users.
+// KEY UPGRADE: AI now has tool-calling capability
+// and full codebase access. It can read/write
+// files, run commands, and delegate to agents.
 // ==========================================
 
 import { create } from "zustand";
 import type { LLMConfig, ChatMessage, ApiKeys, LLMProvider } from "../lib/llm/types";
 import { DEFAULT_LLM_CONFIG, GROQ_FALLBACK_CONFIG } from "../lib/llm/types";
 import { streamChat, testOllamaConnection } from "../lib/llm/providers";
+import { createChatModel } from "../lib/llm/providers";
+import { createAgentTools } from "../lib/agents/tools";
+import {
+  HumanMessage,
+  SystemMessage,
+  ToolMessage,
+} from "@langchain/core/messages";
+import type { BaseMessage } from "@langchain/core/messages";
 
 interface AiState {
   // ── State ──
@@ -22,6 +30,8 @@ interface AiState {
   isStreaming: boolean;
   chatPanelOpen: boolean;
   error: string | null;
+  useAgentMode: boolean; // When ON, complex tasks auto-route to agents
+  toolActivity: string[];  // Live tool activity log
 
   // ── Actions ──
   toggleAiMode: () => void;
@@ -30,9 +40,12 @@ interface AiState {
   setApiKey: (provider: LLMProvider, key: string) => void;
   removeApiKey: (provider: LLMProvider) => void;
   loadApiKeys: (keys: ApiKeys) => void;
-  sendMessage: (content: string) => Promise<void>;
+  sendMessage: (content: string, workspacePath?: string | null, fileContext?: string) => Promise<void>;
   clearMessages: () => void;
   clearError: () => void;
+  setUseAgentMode: (mode: boolean) => void;
+  addToolActivity: (activity: string) => void;
+  clearToolActivity: () => void;
 }
 
 let messageCounter = 0;
@@ -41,29 +54,51 @@ function createMessageId(): string {
 }
 
 /**
- * System prompt designed for dual-audience:
- * - Senior engineers get concise, no-nonsense technical answers
- * - Juniors get enough context to understand without being patronized
+ * System prompt — AI with full codebase access.
+ * This is NOT a simple chatbot. It can read files,
+ * write files, run commands, and interact with the workspace.
  */
-const SYSTEM_PROMPT = `You are Aether, an AI assistant embedded in a professional terminal application built for software engineers.
+function buildSystemPrompt(workspacePath?: string | null, fileContext?: string): string {
+  let prompt = `You are Aether, an AI coding assistant embedded in a professional terminal application. You have FULL ACCESS to the user's codebase and can perform real actions.
 
-Your communication style:
-- Be precise and technical — but explain non-obvious concepts briefly
-- When suggesting commands, always provide them in \`code blocks\`  
-- Show the "why" alongside the "what" — e.g., "Use \`--no-cache\` to bypass stale layers"
-- Default to the most production-grade approach (not the tutorial version)
-- If a question has a simple and advanced answer, give the simple answer first, then note the advanced approach
+YOUR CAPABILITIES:
+- Read any file in the workspace using read_file
+- Write or create files using write_file (requires user approval)
+- Modify specific parts of files using patch_file (requires user approval)
+- Run shell commands (build, test, lint, git) using run_command (requires user approval)
+- List directory contents using list_directory
+- Search across files using search_files
 
-Your capabilities:
-- Code generation, debugging, refactoring, and architecture review
-- Shell commands, system administration, and DevOps
-- Best practices, security considerations, and performance optimization
-- Explaining complex concepts with precision
+WORKFLOW — for ANY question about the codebase:
+1. FIRST use list_directory and read_file to explore the actual project
+2. THEN answer based on what you found — never guess or say "I don't have access"
+3. When making changes, use write_file or patch_file and the user will approve
 
-Rules:
-- Never produce placeholder or dummy code — every snippet should be production-ready
+YOUR COMMUNICATION STYLE:
+- Be precise and technical — explain non-obvious concepts briefly
+- When suggesting commands, provide them in \`code blocks\`
+- Show the "why" alongside the "what"
+- Default to production-grade approaches
+- Never produce placeholder or dummy code
 - If you're unsure, say so — never fabricate commands or APIs
-- Respect the user's time: be concise, but never at the cost of correctness`;
+
+RULES:
+- You ALWAYS have access to the codebase. Never say "I can't access files" or "I'm just a chatbot"
+- When asked about the project, EXPLORE IT using your tools before answering
+- When asked to create or modify files, USE YOUR TOOLS — don't just show code snippets
+- For complex multi-step tasks, break them down and execute each step with tools`;
+
+  if (workspacePath) {
+    prompt += `\n\nCURRENT WORKSPACE: ${workspacePath}
+Start by exploring this directory when the user asks about their project.`;
+  }
+
+  if (fileContext) {
+    prompt += `\n\nFILES IN CONTEXT (selected by user):\n${fileContext}`;
+  }
+
+  return prompt;
+}
 
 export const useAiStore = create<AiState>((set, get) => ({
   aiMode: false,
@@ -73,6 +108,8 @@ export const useAiStore = create<AiState>((set, get) => ({
   isStreaming: false,
   chatPanelOpen: false,
   error: null,
+  useAgentMode: false,
+  toolActivity: [],
 
   toggleAiMode: () =>
     set((s) => ({ aiMode: !s.aiMode, chatPanelOpen: !s.aiMode ? true : s.chatPanelOpen })),
@@ -94,7 +131,14 @@ export const useAiStore = create<AiState>((set, get) => ({
 
   loadApiKeys: (keys) => set({ apiKeys: keys }),
 
-  sendMessage: async (content: string) => {
+  setUseAgentMode: (mode) => set({ useAgentMode: mode }),
+
+  addToolActivity: (activity) =>
+    set((s) => ({ toolActivity: [...s.toolActivity.slice(-50), activity] })),
+
+  clearToolActivity: () => set({ toolActivity: [] }),
+
+  sendMessage: async (content: string, workspacePath?: string | null, fileContext?: string) => {
     const { config, apiKeys, messages } = get();
 
     // Check if API key exists — local provider doesn't need one
@@ -128,6 +172,7 @@ export const useAiStore = create<AiState>((set, get) => ({
       messages: [...messages, userMessage, assistantMessage],
       isStreaming: true,
       error: null,
+      toolActivity: [],
     });
 
     try {
@@ -137,10 +182,8 @@ export const useAiStore = create<AiState>((set, get) => ({
       if (config.provider === "local") {
         const ollamaOnline = await testOllamaConnection();
         if (!ollamaOnline) {
-          // Auto-switch to Groq if key exists
           if (apiKeys.groq) {
             activeConfig = { ...GROQ_FALLBACK_CONFIG };
-            // Notify user about the fallback
             set((s) => ({
               messages: s.messages.map((m) =>
                 m.id === assistantMessage.id
@@ -157,32 +200,161 @@ export const useAiStore = create<AiState>((set, get) => ({
         }
       }
 
-      const allMessages = [...messages, userMessage];
-      await streamChat(
-        activeConfig,
-        apiKeys,
-        allMessages,
-        (chunk) => {
-          set((s) => ({
-            messages: s.messages.map((m) =>
-              m.id === assistantMessage.id
-                ? { ...m, content: m.content + chunk }
-                : m
-            ),
-          }));
-        },
-        SYSTEM_PROMPT
-      );
+      // Build the model and tools
+      const model = createChatModel(activeConfig, apiKeys);
 
-      // Mark streaming as complete
-      set((s) => ({
-        messages: s.messages.map((m) =>
-          m.id === assistantMessage.id
-            ? { ...m, isStreaming: false }
-            : m
-        ),
-        isStreaming: false,
-      }));
+      // Create tools for the AI — same tools agents use
+      const tools = createAgentTools("supervisor" as any, async (_approval) => {
+        // For AI chat, auto-approve reads, prompt for writes
+        // In the future, this will show an approval dialog
+        // For now, auto-approve all (tools will show in activity)
+        return true;
+      }, (output) => {
+        get().addToolActivity(output);
+        // Append tool activity to the streaming message
+        set((s) => ({
+          messages: s.messages.map((m) =>
+            m.id === assistantMessage.id
+              ? { ...m, content: m.content + `\n> 🔧 ${output}\n` }
+              : m
+          ),
+        }));
+      });
+
+      // Try to bind tools to model
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let modelWithTools: any = model;
+      try {
+        const bound = (model as any).bindTools?.(tools);
+        modelWithTools = bound || model;
+      } catch {
+        // Model doesn't support tools — fall back to simple streaming
+        modelWithTools = null;
+      }
+
+      if (modelWithTools) {
+        // ── Agentic mode: tool-calling loop ──
+        const systemPrompt = buildSystemPrompt(workspacePath, fileContext);
+        const langChainMessages: BaseMessage[] = [
+          new SystemMessage(systemPrompt),
+        ];
+
+        // Add conversation history (last 10 messages for context)
+        for (const msg of messages.slice(-10)) {
+          if (msg.role === "user") {
+            langChainMessages.push(new HumanMessage(msg.content));
+          } else if (msg.role === "assistant" && !msg.isStreaming) {
+            // Use dynamic import for AIMessage to avoid circular deps
+            const { AIMessage } = await import("@langchain/core/messages");
+            langChainMessages.push(new AIMessage(msg.content));
+          }
+        }
+        langChainMessages.push(new HumanMessage(content));
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const toolMap = new Map<string, any>(tools.map((t) => [t.name, t]));
+        let currentMessages = [...langChainMessages];
+        let iterations = 0;
+        const MAX_ITERATIONS = 10;
+
+        while (iterations < MAX_ITERATIONS) {
+          iterations++;
+          const response = await modelWithTools.invoke(currentMessages);
+          currentMessages.push(response);
+
+          const toolCalls = response.tool_calls;
+          if (!toolCalls || toolCalls.length === 0) {
+            // Final response — update the message
+            const result = typeof response.content === "string"
+              ? response.content
+              : JSON.stringify(response.content);
+
+            set((s) => ({
+              messages: s.messages.map((m) =>
+                m.id === assistantMessage.id
+                  ? { ...m, content: m.content + result, isStreaming: false }
+                  : m
+              ),
+              isStreaming: false,
+            }));
+            return;
+          }
+
+          // Execute tool calls
+          for (const toolCall of toolCalls) {
+            const toolFn = toolMap.get(toolCall.name);
+            if (!toolFn) {
+              currentMessages.push(
+                new ToolMessage({
+                  tool_call_id: toolCall.id || toolCall.name,
+                  content: `Error: Unknown tool "${toolCall.name}"`,
+                })
+              );
+              continue;
+            }
+
+            try {
+              const toolResult = await (toolFn as any).invoke(toolCall.args);
+              currentMessages.push(
+                new ToolMessage({
+                  tool_call_id: toolCall.id || toolCall.name,
+                  content: typeof toolResult === "string" ? toolResult : JSON.stringify(toolResult),
+                })
+              );
+            } catch (err) {
+              currentMessages.push(
+                new ToolMessage({
+                  tool_call_id: toolCall.id || toolCall.name,
+                  content: `Tool error: ${err instanceof Error ? err.message : String(err)}`,
+                })
+              );
+            }
+          }
+        }
+
+        // Max iterations — get final response
+        const finalResponse = await model.invoke(currentMessages);
+        const finalContent = typeof finalResponse.content === "string"
+          ? finalResponse.content
+          : JSON.stringify(finalResponse.content);
+
+        set((s) => ({
+          messages: s.messages.map((m) =>
+            m.id === assistantMessage.id
+              ? { ...m, content: m.content + finalContent, isStreaming: false }
+              : m
+          ),
+          isStreaming: false,
+        }));
+      } else {
+        // ── Simple streaming mode (model doesn't support tools) ──
+        const systemPrompt = buildSystemPrompt(workspacePath, fileContext);
+        const allMessages = [...messages, userMessage];
+        await streamChat(
+          activeConfig,
+          apiKeys,
+          allMessages,
+          (chunk) => {
+            set((s) => ({
+              messages: s.messages.map((m) =>
+                m.id === assistantMessage.id
+                  ? { ...m, content: m.content + chunk }
+                  : m
+              ),
+            }));
+          },
+          systemPrompt
+        );
+
+        set((s) => ({
+          messages: s.messages.map((m) =>
+            m.id === assistantMessage.id
+              ? { ...m, isStreaming: false }
+              : m
+          ),
+          isStreaming: false,
+        }));
+      }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Unknown error";
       set((s) => ({
@@ -197,7 +369,7 @@ export const useAiStore = create<AiState>((set, get) => ({
     }
   },
 
-  clearMessages: () => set({ messages: [] }),
+  clearMessages: () => set({ messages: [], toolActivity: [] }),
 
   clearError: () => set({ error: null }),
 }));

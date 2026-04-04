@@ -23,6 +23,7 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_dialog::init())
         // ── Global State ─────────────────────────
         .manage(pty_manager)
         // ── IPC Command Handlers ─────────────────
