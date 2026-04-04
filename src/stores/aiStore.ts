@@ -297,7 +297,7 @@ export const useAiStore = create<AiState>((set, get) => ({
             }));
           } else {
             throw new Error(
-              "Ollama is not running. Start it with `ollama serve` and pull Gemma 4 with `ollama pull gemma4:e4b`. " +
+              "Ollama is not running. Start it with `ollama serve` and pull a model with `ollama pull gemma2:9b`. " +
               "Or add a Groq API key in Settings for instant cloud fallback (free tier available)."
             );
           }

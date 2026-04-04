@@ -155,7 +155,8 @@ export function ApiKeyManager() {
             <button
               className="btn btn-ghost"
               onClick={() => {
-                setConfig({ provider: "local", model: PROVIDER_MODELS.local[0] });
+                const model = ollamaModels.length > 0 ? ollamaModels[0] : "auto";
+                setConfig({ provider: "local", model });
               }}
               style={{
                 fontSize: "11px",
@@ -199,7 +200,7 @@ export function ApiKeyManager() {
             <div>
               1. Install Ollama: <code style={{ background: "var(--bg-primary)", padding: "1px 6px", borderRadius: "4px", fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--green)" }}>brew install ollama</code> (macOS) or visit <span style={{ color: "var(--accent)" }}>ollama.com</span><br />
               2. Start Ollama: <code style={{ background: "var(--bg-primary)", padding: "1px 6px", borderRadius: "4px", fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--green)" }}>ollama serve</code><br />
-              3. Pull Gemma 4: <code style={{ background: "var(--bg-primary)", padding: "1px 6px", borderRadius: "4px", fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--green)" }}>ollama pull gemma4:e4b</code>
+              3. Pull a model: <code style={{ background: "var(--bg-primary)", padding: "1px 6px", borderRadius: "4px", fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--green)" }}>ollama pull gemma2:9b</code>
             </div>
             <button
               className="btn btn-ghost"
