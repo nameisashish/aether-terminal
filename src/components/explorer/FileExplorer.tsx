@@ -42,6 +42,13 @@ export function FileExplorer() {
 
   const [showNewInput, setShowNewInput] = useState<"file" | "folder" | null>(null);
   const [newName, setNewName] = useState("");
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; show: boolean } | null>(null);
+
+  useEffect(() => {
+    const closeContextMenu = () => setContextMenu(null);
+    document.addEventListener("click", closeContextMenu);
+    return () => document.removeEventListener("click", closeContextMenu);
+  }, []);
 
   // ── Sync with workspace path ──
   useEffect(() => {
@@ -143,6 +150,16 @@ export function FileExplorer() {
     }
   }, []);
 
+  // ── Handle Right Click ──
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      show: true,
+    });
+  }, []);
+
   if (!explorerOpen) return null;
 
   const folderName = rootPath ? rootPath.split("/").pop() || rootPath : "No folder open";
@@ -162,7 +179,9 @@ export function FileExplorer() {
           borderRight: "1px solid var(--border-subtle)",
           overflow: "hidden",
           flexShrink: 0,
+          position: "relative",
         }}
+        onContextMenu={handleContextMenu}
       >
         {/* Header */}
         <div
@@ -197,27 +216,19 @@ export function FileExplorer() {
           <div style={{ display: "flex", gap: "2px" }}>
             <button
               className="icon-btn"
+              onClick={handleOpenFolder}
+              title="Connect Directory"
+              style={{ width: "24px", height: "24px", color: "var(--accent)" }}
+            >
+              <FolderPlus size={14} />
+            </button>
+            <button
+              className="icon-btn"
               onClick={() => setShowNewInput("file")}
               title="New File"
               style={{ width: "24px", height: "24px" }}
             >
               <FilePlus size={12} />
-            </button>
-            <button
-              className="icon-btn"
-              onClick={() => setShowNewInput("folder")}
-              title="New Folder"
-              style={{ width: "24px", height: "24px" }}
-            >
-              <FolderPlus size={12} />
-            </button>
-            <button
-              className="icon-btn"
-              onClick={handleOpenFolder}
-              title="Open Folder"
-              style={{ width: "24px", height: "24px" }}
-            >
-              <FolderOpen size={12} />
             </button>
             {selectedFiles.size > 0 && (
               <button
@@ -379,6 +390,93 @@ export function FileExplorer() {
         >
           {rootPath || "No directory open"}
         </div>
+        {/* Context Menu */}
+        <AnimatePresence>
+          {contextMenu?.show && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              transition={{ duration: 0.1 }}
+              style={{
+                position: "fixed",
+                top: contextMenu.y,
+                left: contextMenu.x,
+                background: "var(--surface)",
+                border: "1px solid var(--border-active)",
+                borderRadius: "8px",
+                padding: "6px",
+                boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+                zIndex: 1000,
+                display: "flex",
+                flexDirection: "column",
+                minWidth: "160px",
+                fontSize: "12px",
+              }}
+            >
+              <button
+                className="context-menu-item"
+                onClick={handleOpenFolder}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  padding: "8px 12px",
+                  background: "transparent",
+                  border: "none",
+                  color: "var(--text)",
+                  textAlign: "left",
+                  cursor: "pointer",
+                  borderRadius: "4px",
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "var(--card-hover)")}
+                onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+              >
+                <FolderPlus size={14} /> Connect Directory
+              </button>
+              <div style={{ height: "1px", background: "var(--border-subtle)", margin: "4px 0" }} />
+              <button
+                onClick={() => setShowNewInput("file")}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  padding: "8px 12px",
+                  background: "transparent",
+                  border: "none",
+                  color: "var(--text)",
+                  textAlign: "left",
+                  cursor: "pointer",
+                  borderRadius: "4px",
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "var(--card-hover)")}
+                onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+              >
+                <FilePlus size={14} /> Add new file
+              </button>
+              <button
+                onClick={() => setShowNewInput("folder")}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  padding: "8px 12px",
+                  background: "transparent",
+                  border: "none",
+                  color: "var(--text)",
+                  textAlign: "left",
+                  cursor: "pointer",
+                  borderRadius: "4px",
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "var(--card-hover)")}
+                onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+              >
+                <FolderPlus size={14} /> Add new folder
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
       </motion.div>
     </AnimatePresence>
   );
