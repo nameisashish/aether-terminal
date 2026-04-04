@@ -35,6 +35,22 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "macOS": {
+      "minimumSystemVersion": "10.15",
+      "frameworks": [],
+      "exceptionDomain": null,
+      "signingIdentity": null
+    },
+    "windows": {
+      "certificateThumbprint": null,
+      "timestampUrl": null,
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      }
+    },
+    "category": "DeveloperTool",
+    "shortDescription": "AI-native terminal with multi-agent coding system",
+    "longDescription": "Aether Terminal is an AI-native terminal with 8 specialized agents (Supervisor, Architect, Coder, Reviewer, Tester, QA, Documenter, Deployer) working together to build, test, and deploy your code. Powered by Gemma 4 (local), Groq, OpenAI, Anthropic, Gemini, xAI, and OpenRouter."
   }
 }

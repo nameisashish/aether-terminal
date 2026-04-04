@@ -389,6 +389,126 @@
     .download-card h4 { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
     .download-card p { font-size: 12px; color: var(--dim); }
 
+    /* ── Install Guide ── */
+    .install-guide {
+      padding: 100px 24px;
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    .install-guide h2 {
+      text-align: center;
+      font-size: 36px;
+      font-weight: 700;
+      margin-bottom: 16px;
+    }
+
+    .install-guide > p {
+      text-align: center;
+      color: var(--muted);
+      font-size: 16px;
+      margin-bottom: 48px;
+    }
+
+    .install-tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 24px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 0;
+    }
+
+    .install-tab {
+      padding: 10px 20px;
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 14px;
+      font-family: inherit;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: all 0.2s;
+    }
+
+    .install-tab:hover { color: var(--text); }
+    .install-tab.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+    }
+
+    .install-panel {
+      display: none;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 32px;
+    }
+
+    .install-panel.active { display: block; }
+
+    .install-panel h3 {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 20px;
+      color: var(--accent-light);
+    }
+
+    .install-step {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+
+    .step-num {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: var(--accent-muted);
+      color: var(--accent);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 700;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+
+    .step-content { flex: 1; }
+    .step-content p { font-size: 14px; line-height: 1.7; color: var(--text); }
+    .step-content code {
+      background: var(--bg);
+      padding: 2px 8px;
+      border-radius: 6px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      color: var(--green);
+    }
+
+    .cmd-block {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 18px;
+      margin-top: 10px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      color: var(--green);
+      user-select: all;
+    }
+
+    .install-note {
+      margin-top: 24px;
+      padding: 16px 20px;
+      background: var(--accent-muted);
+      border-radius: 10px;
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    .install-note strong { color: var(--accent-light); }
+
     /* ── Footer ── */
     footer {
       padding: 40px 24px;
@@ -426,6 +546,7 @@
       <a href="#features">Features</a>
       <a href="#agents">Agents</a>
       <a href="#download">Download</a>
+      <a href="#install-guide">Install Guide</a>
       <a href="https://github.com/nameisashish/aether-terminal" target="_blank">GitHub</a>
       <a href="#download" class="nav-cta">Download Now</a>
     </div>
@@ -599,6 +720,109 @@
     </p>
   </section>
 
+  <!-- Install Guide -->
+  <section class="install-guide" id="install-guide">
+    <h2>Installation Guide</h2>
+    <p>Aether Terminal is open-source and free. Follow these quick steps to get started on your OS.</p>
+
+    <div class="install-tabs">
+      <button class="install-tab active" onclick="showTab('mac')">macOS</button>
+      <button class="install-tab" onclick="showTab('win')">Windows</button>
+      <button class="install-tab" onclick="showTab('linux')">Linux</button>
+    </div>
+
+    <div id="panel-mac" class="install-panel active">
+      <h3>macOS Installation</h3>
+      <div class="install-step">
+        <div class="step-num">1</div>
+        <div class="step-content">
+          <p>Download the <strong>.dmg</strong> file from the Download section above (Apple Silicon or Intel).</p>
+        </div>
+      </div>
+      <div class="install-step">
+        <div class="step-num">2</div>
+        <div class="step-content">
+          <p>Open the <strong>.dmg</strong> and drag <strong>Aether Terminal</strong> into your Applications folder.</p>
+        </div>
+      </div>
+      <div class="install-step">
+        <div class="step-num">3</div>
+        <div class="step-content">
+          <p>On first launch, macOS will show a security warning. <strong>Don't double-click.</strong> Instead, <strong>right-click</strong> (or Control-click) the app and select <strong>"Open"</strong>.</p>
+        </div>
+      </div>
+      <div class="install-step">
+        <div class="step-num">4</div>
+        <div class="step-content">
+          <p>Click <strong>"Open"</strong> in the dialog that appears. You only need to do this once — after that it opens normally.</p>
+        </div>
+      </div>
+      <div class="install-note">
+        <strong>Alternative:</strong> If right-click doesn't work, open Terminal and run:
+        <div class="cmd-block">xattr -cr /Applications/Aether\ Terminal.app</div>
+        This removes the quarantine flag. Then open the app normally.
+      </div>
+    </div>
+
+    <div id="panel-win" class="install-panel">
+      <h3>Windows Installation</h3>
+      <div class="install-step">
+        <div class="step-num">1</div>
+        <div class="step-content">
+          <p>Download the <strong>.exe</strong> installer from the Download section above.</p>
+        </div>
+      </div>
+      <div class="install-step">
+        <div class="step-num">2</div>
+        <div class="step-content">
+          <p>Run the installer. Windows SmartScreen may show <strong>"Windows protected your PC"</strong>.</p>
+        </div>
+      </div>
+      <div class="install-step">
+        <div class="step-num">3</div>
+        <div class="step-content">
+          <p>Click <strong>"More info"</strong>, then click <strong>"Run anyway"</strong>.</p>
+        </div>
+      </div>
+      <div class="install-step">
+        <div class="step-num">4</div>
+        <div class="step-content">
+          <p>Follow the installer prompts. Aether Terminal will be added to your Start menu.</p>
+        </div>
+      </div>
+      <div class="install-note">
+        <strong>Why this happens:</strong> Aether Terminal is open-source and free. Code signing certificates cost hundreds of dollars per year. The app is safe — you can <a href="https://github.com/nameisashish/aether-terminal" target="_blank" style="color:var(--accent);">review the source code</a> yourself.
+      </div>
+    </div>
+
+    <div id="panel-linux" class="install-panel">
+      <h3>Linux Installation</h3>
+      <div class="install-step">
+        <div class="step-num">1</div>
+        <div class="step-content">
+          <p>Download the <strong>.AppImage</strong> or <strong>.deb</strong> file from the Download section above.</p>
+        </div>
+      </div>
+      <div class="install-step">
+        <div class="step-num">2</div>
+        <div class="step-content">
+          <p><strong>For .AppImage:</strong> Make it executable and run it:</p>
+          <div class="cmd-block">chmod +x Aether.Terminal_*.AppImage && ./Aether.Terminal_*.AppImage</div>
+        </div>
+      </div>
+      <div class="install-step">
+        <div class="step-num">3</div>
+        <div class="step-content">
+          <p><strong>For .deb (Ubuntu/Debian):</strong></p>
+          <div class="cmd-block">sudo dpkg -i Aether.Terminal_*.deb</div>
+        </div>
+      </div>
+      <div class="install-note">
+        <strong>No warnings on Linux.</strong> Linux does not have the same gatekeeper restrictions as macOS or Windows. The app runs immediately after installation.
+      </div>
+    </div>
+  </section>
+
   <!-- Footer -->
   <footer>
     <p>
@@ -612,6 +836,14 @@
   </footer>
 
   <script>
+    // Install guide tab switching
+    function showTab(os) {
+      document.querySelectorAll('.install-tab').forEach(function(t) { t.classList.remove('active'); });
+      document.querySelectorAll('.install-panel').forEach(function(p) { p.classList.remove('active'); });
+      document.getElementById('panel-' + os).classList.add('active');
+      event.target.classList.add('active');
+    }
+
     // Auto-detect OS and highlight the right download card
     (function() {
       var ua = navigator.userAgent.toLowerCase();
@@ -623,6 +855,20 @@
       if (highlight) {
         var el = document.getElementById(highlight);
         if (el) el.style.borderColor = 'var(--accent)';
+      }
+
+      // Auto-select install guide tab for user's OS
+      var osTab = null;
+      if (ua.indexOf('mac') !== -1) osTab = 'mac';
+      else if (ua.indexOf('win') !== -1) osTab = 'win';
+      else if (ua.indexOf('linux') !== -1) osTab = 'linux';
+      if (osTab) {
+        document.querySelectorAll('.install-tab').forEach(function(t) { t.classList.remove('active'); });
+        document.querySelectorAll('.install-panel').forEach(function(p) { p.classList.remove('active'); });
+        document.getElementById('panel-' + osTab).classList.add('active');
+        document.querySelectorAll('.install-tab').forEach(function(t) {
+          if (t.textContent.toLowerCase().indexOf(osTab === 'mac' ? 'mac' : osTab === 'win' ? 'win' : 'linux') !== -1) t.classList.add('active');
+        });
       }
 
       // Fetch latest release and set direct download links

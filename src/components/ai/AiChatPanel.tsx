@@ -83,7 +83,7 @@ export function AiChatPanel() {
     }
   };
 
-  const hasApiKey = !!apiKeys[config.provider];
+  const hasApiKey = config.provider === "local" || !!apiKeys[config.provider];
   const providerInfo = PROVIDER_INFO[config.provider];
 
   if (!chatPanelOpen) return null;

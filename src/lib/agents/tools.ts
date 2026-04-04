@@ -162,8 +162,12 @@ export function createAgentTools(
     async ({ pattern, directory, fileExtension }) => {
       try {
         const { Command } = await import("@tauri-apps/plugin-shell");
+        // Sanitize inputs to prevent shell injection
+        const safePattern = pattern.replace(/[`$\\!"]/g, '\\$&');
+        const safeDir = directory.replace(/[`$\\!"]/g, '\\$&');
+        const ext = (fileExtension || '*').replace(/[^a-zA-Z0-9*]/g, '');
         // Build grep command with context
-        let cmd = `grep -rn --include="*.${fileExtension || '*'}" "${pattern}" "${directory}" | head -50`;
+        let cmd = `grep -rn --include="*.${ext}" "${safePattern}" "${safeDir}" | head -50`;
         const shellCmd = Command.create("sh", ["-c", cmd]);
         const output = await shellCmd.execute();
         const result = output.stdout || "(no matches found)";

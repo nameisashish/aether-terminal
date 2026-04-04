@@ -23,6 +23,9 @@ importers:
       '@langchain/langgraph':
         specifier: ^1.2.6
         version: 1.2.6(@langchain/core@1.1.38(openai@6.33.0(zod@3.23.8)))(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(zod@3.23.8)
+      '@langchain/ollama':
+        specifier: ^0.2.0
+        version: 0.2.4(@langchain/core@1.1.38(openai@6.33.0(zod@3.23.8)))
       '@langchain/openai':
         specifier: ^1.4.1
         version: 1.4.1(@langchain/core@1.1.38(openai@6.33.0(zod@3.23.8)))
@@ -477,6 +480,12 @@ packages:
     peerDependenciesMeta:
       zod-to-json-schema:
         optional: true
+
+  '@langchain/ollama@0.2.4':
+    resolution: {integrity: sha512-XThDrZurNPcUO6sasN13rkes1aGgu5gWAtDkkyIGT3ZeMOvrYgPKGft+bbhvsigTIH9C01TfPzrSp8LAmvHIjA==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      '@langchain/core': '>=0.3.58 <0.4.0'
 
   '@langchain/openai@1.4.1':
     resolution: {integrity: sha512-jaHk4TnLqWrQ1KYmavvwCImW6x8pBy6LLTK73tzSMg7HBLbq0g/l7EkpMcxZWDOvyufuCXUqO2bj47apcOhw6Q==}
@@ -1621,6 +1630,9 @@ packages:
   node-releases@2.0.37:
     resolution: {integrity: sha512-1h5gKZCF+pO/o3Iqt5Jp7wc9rH3eJJ0+nh/CIoiRwjRxde/hAHyLPXYN4V3CqKAbiZPSeJFSWHmJsbkicta0Eg==}
 
+  ollama@0.5.18:
+    resolution: {integrity: sha512-lTFqTf9bo7Cd3hpF6CviBe/DEhewjoZYd9N/uCe7O20qYTvGqrNOFOBDj3lbZgFWHUgDv5EeyusYxsZSLS8nvg==}
+
   openai@6.33.0:
     resolution: {integrity: sha512-xAYN1W3YsDXJWA5F277135YfkEk6H7D3D6vWwRhJ3OEkzRgcyK8z/P5P9Gyi/wB4N8kK9kM5ZjprfvyHagKmpw==}
     hasBin: true
@@ -1853,6 +1865,9 @@ packages:
 
   webidl-conversions@3.0.1:
     resolution: {integrity: sha512-2JAn3z8AR6rjK8Sm8orRC0h/bcl/DqL7tRPdGZ4I1CjdF+EaMLmYxBHyXuKL849eucPFhvBoxMsflfOb8kxaeQ==}
+
+  whatwg-fetch@3.6.20:
+    resolution: {integrity: sha512-EqhiFU6daOA8kpjOWTL0olhVOF3i7OrFzSYiGsEMB8GcXS+RrzauAERX65xMeNWVqxA6HXH2m69Z9LaKKdisfg==}
 
   whatwg-url@5.0.0:
     resolution: {integrity: sha512-saE57nupxk6v3HY35+jzBwYa0rKSy0XR8JSxZPwgLr7ys0IBzhGviA1/TUGJLmSVqs8pb9AnvICXEuOHLprYTw==}
@@ -2206,6 +2221,12 @@ snapshots:
       - react-dom
       - svelte
       - vue
+
+  '@langchain/ollama@0.2.4(@langchain/core@1.1.38(openai@6.33.0(zod@3.23.8)))':
+    dependencies:
+      '@langchain/core': 1.1.38(openai@6.33.0(zod@3.23.8))
+      ollama: 0.5.18
+      uuid: 10.0.0
 
   '@langchain/openai@1.4.1(@langchain/core@1.1.38(openai@6.33.0(zod@3.23.8)))':
     dependencies:
@@ -3177,6 +3198,10 @@ snapshots:
 
   node-releases@2.0.37: {}
 
+  ollama@0.5.18:
+    dependencies:
+      whatwg-fetch: 3.6.20
+
   openai@6.33.0(zod@3.23.8):
     optionalDependencies:
       zod: 3.23.8
@@ -3361,6 +3386,8 @@ snapshots:
   web-streams-polyfill@4.0.0-beta.3: {}
 
   webidl-conversions@3.0.1: {}
+
+  whatwg-fetch@3.6.20: {}
 
   whatwg-url@5.0.0:
     dependencies:

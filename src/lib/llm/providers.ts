@@ -1,14 +1,15 @@
 // ==========================================
 // LLM Providers
 // Multi-provider LLM client using LangChain.
-// Supports Groq (default), OpenAI, Anthropic,
-// Gemini, and xAI with streaming.
+// Supports Local/Ollama (default), Groq,
+// OpenAI, Anthropic, Gemini, xAI, OpenRouter.
 // ==========================================
 
 import { ChatGroq } from "@langchain/groq";
 import { ChatOpenAI } from "@langchain/openai";
 import { ChatAnthropic } from "@langchain/anthropic";
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
+import { ChatOllama } from "@langchain/ollama";
 import { type BaseChatModel } from "@langchain/core/language_models/chat_models";
 import { HumanMessage, SystemMessage, AIMessage } from "@langchain/core/messages";
 import type { LLMConfig, LLMProvider, ChatMessage, ApiKeys } from "./types";
@@ -21,15 +22,27 @@ export function createChatModel(
   config: LLMConfig,
   apiKeys: ApiKeys
 ): BaseChatModel {
-  const apiKey = apiKeys[config.provider];
-  if (!apiKey) {
-    throw new Error(`API key not configured for provider: ${config.provider}`);
+  // Local provider doesn't need an API key
+  if (config.provider !== "local") {
+    const apiKey = apiKeys[config.provider];
+    if (!apiKey) {
+      throw new Error(`API key not configured for provider: ${config.provider}. Go to Settings → API Keys to add one.`);
+    }
   }
 
   switch (config.provider) {
+    case "local":
+      // Ollama runs locally — no API key needed
+      return new ChatOllama({
+        model: config.model,
+        temperature: config.temperature,
+        baseUrl: "http://localhost:11434",
+        // Ollama streams by default
+      });
+
     case "groq":
       return new ChatGroq({
-        apiKey,
+        apiKey: apiKeys.groq!,
         model: config.model,
         temperature: config.temperature,
         maxTokens: config.maxTokens,
@@ -38,7 +51,7 @@ export function createChatModel(
 
     case "openai":
       return new ChatOpenAI({
-        openAIApiKey: apiKey,
+        openAIApiKey: apiKeys.openai!,
         modelName: config.model,
         temperature: config.temperature,
         maxTokens: config.maxTokens,
@@ -47,7 +60,7 @@ export function createChatModel(
 
     case "anthropic":
       return new ChatAnthropic({
-        anthropicApiKey: apiKey,
+        anthropicApiKey: apiKeys.anthropic!,
         modelName: config.model,
         temperature: config.temperature,
         maxTokens: config.maxTokens,
@@ -56,7 +69,7 @@ export function createChatModel(
 
     case "gemini":
       return new ChatGoogleGenerativeAI({
-        apiKey,
+        apiKey: apiKeys.gemini!,
         model: config.model,
         temperature: config.temperature,
         maxOutputTokens: config.maxTokens,
@@ -66,13 +79,26 @@ export function createChatModel(
     case "xai":
       // xAI uses OpenAI-compatible API
       return new ChatOpenAI({
-        openAIApiKey: apiKey,
+        openAIApiKey: apiKeys.xai!,
         modelName: config.model,
         temperature: config.temperature,
         maxTokens: config.maxTokens,
         streaming: config.streaming,
         configuration: {
           baseURL: "https://api.x.ai/v1",
+        },
+      });
+
+    case "openrouter":
+      // OpenRouter uses OpenAI-compatible API
+      return new ChatOpenAI({
+        openAIApiKey: apiKeys.openrouter!,
+        modelName: config.model,
+        temperature: config.temperature,
+        maxTokens: config.maxTokens,
+        streaming: config.streaming,
+        configuration: {
+          baseURL: "https://openrouter.ai/api/v1",
         },
       });
 
@@ -139,13 +165,18 @@ export async function streamChat(
 }
 
 /**
- * Tests if an API key is valid by making a minimal request
+ * Tests if an API key is valid by making a minimal request.
+ * For local provider, tests if Ollama is reachable.
  */
 export async function testApiKey(
   provider: LLMProvider,
   apiKey: string
 ): Promise<boolean> {
   try {
+    if (provider === "local") {
+      return await testOllamaConnection();
+    }
+
     const config: LLMConfig = {
       provider,
       model: getDefaultModel(provider),
@@ -162,14 +193,48 @@ export async function testApiKey(
   }
 }
 
+/**
+ * Tests if Ollama is running and reachable at localhost:11434
+ */
+export async function testOllamaConnection(): Promise<boolean> {
+  try {
+    const response = await fetch("http://localhost:11434/api/tags", {
+      method: "GET",
+      signal: AbortSignal.timeout(3000),
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Fetches the list of models available in the local Ollama instance
+ */
+export async function getOllamaModels(): Promise<string[]> {
+  try {
+    const response = await fetch("http://localhost:11434/api/tags", {
+      method: "GET",
+      signal: AbortSignal.timeout(3000),
+    });
+    if (!response.ok) return [];
+    const data = await response.json();
+    return (data.models || []).map((m: { name: string }) => m.name);
+  } catch {
+    return [];
+  }
+}
+
 /** Returns the default model for a provider */
 function getDefaultModel(provider: LLMProvider): string {
   const defaults: Record<LLMProvider, string> = {
-    groq: "llama-3.1-70b-versatile",
+    local: "gemma4:e4b",
+    groq: "llama-3.3-70b-versatile",
     openai: "gpt-4o-mini",
     anthropic: "claude-3-5-haiku-20241022",
     gemini: "gemini-2.0-flash",
     xai: "grok-2-mini",
+    openrouter: "meta-llama/llama-3.1-70b-instruct",
   };
   return defaults[provider];
 }

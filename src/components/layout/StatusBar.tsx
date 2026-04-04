@@ -43,8 +43,12 @@ export function StatusBar() {
           <>
             <span style={{ color: "var(--accent)", fontWeight: 600 }}>AI</span>
             <span style={{ opacity: 0.3 }}>│</span>
-            <span style={{ color: hasApiKey ? providerInfo.color : "var(--red)" }}>
-              {hasApiKey ? `${providerInfo.name} · ${config.model}` : `${providerInfo.name} (no key)`}
+            <span style={{ color: (config.provider === "local" || hasApiKey) ? providerInfo.color : "var(--red)" }}>
+              {config.provider === "local"
+                ? `Local · ${config.model}`
+                : hasApiKey
+                ? `${providerInfo.name} · ${config.model}`
+                : `${providerInfo.name} (no key)`}
             </span>
           </>
         )}

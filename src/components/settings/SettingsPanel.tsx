@@ -6,7 +6,7 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Settings, Sliders } from "lucide-react";
+import { X, Settings } from "lucide-react";
 import { ApiKeyManager } from "./ApiKeyManager";
 import { useAiStore } from "../../stores/aiStore";
 
@@ -230,22 +230,86 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
             )}
 
             {activeSection === "general" && (
-              <div
-                style={{
-                  fontSize: "13px",
-                  color: "var(--text-muted)",
-                  textAlign: "center",
-                  padding: "40px 20px",
-                }}
-              >
-                <Sliders
-                  size={28}
-                  strokeWidth={1.5}
-                  style={{ opacity: 0.3, marginBottom: "12px" }}
-                />
-                <div>More settings coming in Phase 4</div>
-                <div style={{ fontSize: "11px", marginTop: "4px" }}>
-                  Theme, fonts, keybindings, and more.
+              <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+                <div>
+                  <div
+                    style={{
+                      fontSize: "13px",
+                      fontWeight: 600,
+                      color: "var(--text-primary)",
+                      marginBottom: "8px",
+                    }}
+                  >
+                    About
+                  </div>
+                  <div
+                    style={{
+                      fontSize: "12px",
+                      color: "var(--text-secondary)",
+                      lineHeight: "1.6",
+                    }}
+                  >
+                    <strong>Aether Terminal</strong> v0.1.0<br />
+                    AI-native terminal with 8 specialized agents.<br />
+                    Built with Tauri v2 · React 19 · xterm.js · LangChain.js
+                  </div>
+                </div>
+
+                <div>
+                  <div
+                    style={{
+                      fontSize: "13px",
+                      fontWeight: 600,
+                      color: "var(--text-primary)",
+                      marginBottom: "8px",
+                    }}
+                  >
+                    Keyboard Shortcuts
+                  </div>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "120px 1fr",
+                      gap: "6px 16px",
+                      fontSize: "12px",
+                      color: "var(--text-secondary)",
+                    }}
+                  >
+                    <span style={{ fontFamily: "var(--font-mono)", color: "var(--text-muted)" }}>⌘ T</span>
+                    <span>New terminal tab</span>
+                    <span style={{ fontFamily: "var(--font-mono)", color: "var(--text-muted)" }}>⌘ W</span>
+                    <span>Close current tab</span>
+                    <span style={{ fontFamily: "var(--font-mono)", color: "var(--text-muted)" }}>Enter</span>
+                    <span>Approve agent action</span>
+                    <span style={{ fontFamily: "var(--font-mono)", color: "var(--text-muted)" }}>Escape</span>
+                    <span>Reject agent action / close panel</span>
+                    <span style={{ fontFamily: "var(--font-mono)", color: "var(--text-muted)" }}>Shift+Enter</span>
+                    <span>Newline in chat input</span>
+                  </div>
+                </div>
+
+                <div>
+                  <div
+                    style={{
+                      fontSize: "13px",
+                      fontWeight: 600,
+                      color: "var(--text-primary)",
+                      marginBottom: "8px",
+                    }}
+                  >
+                    Links
+                  </div>
+                  <div
+                    style={{
+                      fontSize: "12px",
+                      color: "var(--text-secondary)",
+                      lineHeight: "2",
+                    }}
+                  >
+                    <a href="https://github.com/nameisashish/aether-terminal" target="_blank" style={{ color: "var(--accent)" }}>GitHub Repository</a><br />
+                    <a href="https://ollama.com" target="_blank" style={{ color: "var(--accent)" }}>Get Ollama (for local AI)</a><br />
+                    <a href="https://console.groq.com" target="_blank" style={{ color: "var(--accent)" }}>Get Groq API Key (free tier)</a>
+                  </div>
                 </div>
               </div>
             )}

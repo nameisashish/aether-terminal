@@ -10,8 +10,8 @@
 
 import { create } from "zustand";
 import type { LLMConfig, ChatMessage, ApiKeys, LLMProvider } from "../lib/llm/types";
-import { DEFAULT_LLM_CONFIG } from "../lib/llm/types";
-import { streamChat } from "../lib/llm/providers";
+import { DEFAULT_LLM_CONFIG, GROQ_FALLBACK_CONFIG } from "../lib/llm/types";
+import { streamChat, testOllamaConnection } from "../lib/llm/providers";
 
 interface AiState {
   // ── State ──
@@ -97,8 +97,8 @@ export const useAiStore = create<AiState>((set, get) => ({
   sendMessage: async (content: string) => {
     const { config, apiKeys, messages } = get();
 
-    // Check if API key exists — give actionable guidance
-    if (!apiKeys[config.provider]) {
+    // Check if API key exists — local provider doesn't need one
+    if (config.provider !== "local" && !apiKeys[config.provider]) {
       set({
         error: `No API key for ${config.provider}. Go to Settings (⌘ ,) → API Keys to add one.`,
       });
@@ -131,9 +131,35 @@ export const useAiStore = create<AiState>((set, get) => ({
     });
 
     try {
+      let activeConfig = config;
+
+      // Graceful fallback: if using local (Ollama), check if it's reachable first
+      if (config.provider === "local") {
+        const ollamaOnline = await testOllamaConnection();
+        if (!ollamaOnline) {
+          // Auto-switch to Groq if key exists
+          if (apiKeys.groq) {
+            activeConfig = { ...GROQ_FALLBACK_CONFIG };
+            // Notify user about the fallback
+            set((s) => ({
+              messages: s.messages.map((m) =>
+                m.id === assistantMessage.id
+                  ? { ...m, content: "*[Ollama offline — using Groq as fallback]*\n\n" }
+                  : m
+              ),
+            }));
+          } else {
+            throw new Error(
+              "Ollama is not running. Start it with `ollama serve` and pull Gemma 4 with `ollama pull gemma4:e4b`. " +
+              "Or add a Groq API key in Settings for instant cloud fallback (free tier available)."
+            );
+          }
+        }
+      }
+
       const allMessages = [...messages, userMessage];
       await streamChat(
-        config,
+        activeConfig,
         apiKeys,
         allMessages,
         (chunk) => {
