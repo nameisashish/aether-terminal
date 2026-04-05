@@ -187,12 +187,13 @@ export const useAiStore = create<AiState>((set, get) => ({
       if (ollamaOnline) {
         const models = await getOllamaModels();
         if (models.length > 0 && !models.includes(config.model)) {
-          // The configured model doesn't exist — switch to the first available one
-          const newModel = models[0];
-          const newConfig = { ...config, model: newModel };
+          // Prefer lightweight models that work well on CPU
+          const preferred = ["llama3.2:3b", "llama3.2:1b", "gemma2:2b", "phi3:mini", "qwen2.5-coder:latest"];
+          const bestModel = preferred.find((m) => models.includes(m)) || models[0];
+          const newConfig = { ...config, model: bestModel };
           saveToStorage(STORAGE_KEYS.CONFIG, newConfig);
           set({ config: newConfig });
-          console.log(`[Aether] Auto-selected Ollama model: ${newModel}`);
+          console.log(`[Aether] Auto-selected Ollama model: ${bestModel}`);
         }
       } else {
         // Ollama is offline — if we have a Groq key, auto-switch
@@ -216,11 +217,13 @@ export const useAiStore = create<AiState>((set, get) => ({
       try {
         const models = await getOllamaModels();
         if (models.length > 0 && !models.includes(config.model)) {
-          // The configured model doesn't exist — auto-switch to the first available one
-          config = { ...config, model: models[0] };
+          // Prefer lightweight models that work well on CPU
+          const preferred = ["llama3.2:3b", "llama3.2:1b", "gemma2:2b", "phi3:mini", "qwen2.5-coder:latest"];
+          const bestModel = preferred.find((m) => models.includes(m)) || models[0];
+          config = { ...config, model: bestModel };
           saveToStorage(STORAGE_KEYS.CONFIG, config);
           set({ config });
-          console.log(`[Aether] Auto-fixed model to: ${models[0]}`);
+          console.log(`[Aether] Auto-fixed model to: ${bestModel}`);
         } else if (models.length === 0) {
           // Ollama has no models — check for cloud fallback
           if (apiKeys.groq) {

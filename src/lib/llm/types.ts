@@ -60,7 +60,7 @@ export const PROVIDER_MODELS: Record<LLMProvider, string[]> = {
 /** Provider display info */
 export const PROVIDER_INFO: Record<LLMProvider, { name: string; color: string; description: string }> = {
   local: {
-    name: "Local (Gemma 4)",
+    name: "Local (Ollama)",
     color: "#34d399",
     description: "Run models locally via Ollama — free, private, no API key needed",
   },
