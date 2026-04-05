@@ -24,6 +24,7 @@ import {
   HumanMessage,
   SystemMessage,
   ToolMessage,
+  AIMessage,
 } from "@langchain/core/messages";
 import type { BaseMessage } from "@langchain/core/messages";
 import type { AgentStep, PendingApproval, ApprovalDecision } from "../lib/agents/types";
@@ -237,7 +238,7 @@ export const useAiStore = create<AiState>((set, get) => ({
       const ollamaOnline = await testOllamaConnection();
       if (ollamaOnline) {
         const models = await getOllamaModels();
-        if (models.length > 0 && !models.includes(config.model)) {
+        if (models.length > 0 && (config.model === "auto" || !models.includes(config.model))) {
           const preferred = ["llama3.2:3b", "llama3.2:1b", "gemma2:2b", "phi3:mini", "qwen2.5-coder:latest"];
           const bestModel = preferred.find((m) => models.includes(m)) || models[0];
           const newConfig = { ...config, model: bestModel };
@@ -265,7 +266,7 @@ export const useAiStore = create<AiState>((set, get) => ({
     if (config.provider === "local") {
       try {
         const models = await getOllamaModels();
-        if (models.length > 0 && !models.includes(config.model)) {
+        if (models.length > 0 && (config.model === "auto" || !models.includes(config.model))) {
           const preferred = ["llama3.2:3b", "llama3.2:1b", "gemma2:2b", "phi3:mini", "qwen2.5-coder:latest"];
           const bestModel = preferred.find((m) => models.includes(m)) || models[0];
           config = { ...config, model: bestModel };
@@ -466,7 +467,6 @@ export const useAiStore = create<AiState>((set, get) => ({
           if (msg.role === "user") {
             langChainMessages.push(new HumanMessage(msg.content));
           } else if (msg.role === "assistant" && !msg.isStreaming) {
-            const { AIMessage } = await import("@langchain/core/messages");
             langChainMessages.push(new AIMessage(msg.content));
           }
         }
@@ -518,7 +518,7 @@ export const useAiStore = create<AiState>((set, get) => ({
 
             try {
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              const toolResult = await (toolFn as any).invoke(toolCall.args);
+              const toolResult = await (toolFn as any).invoke(toolCall.args || {});
               currentMessages.push(
                 new ToolMessage({
                   tool_call_id: toolCall.id || toolCall.name,

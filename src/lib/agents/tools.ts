@@ -209,7 +209,7 @@ export function createAgentTools(
         if (!content.includes(search)) {
           return `Error: Could not find the search string in ${path}. Read the file first to get the exact content.`;
         }
-        const newContent = content.replace(search, replace);
+        const newContent = content.split(search).join(replace);
         await writeTextFile(path, newContent);
         onOutput(`🔧 Patched file: ${path}`);
         return `Successfully patched ${path}`;

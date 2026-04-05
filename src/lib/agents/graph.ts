@@ -410,7 +410,7 @@ async function executeAgentLoop(
         });
 
         try {
-          const toolResult = await (toolFn as any).invoke(toolCall.args);
+          const toolResult = await (toolFn as any).invoke(toolCall.args || {});
           currentMessages.push(
             new ToolMessage({
               tool_call_id: toolCall.id || toolCall.name,
@@ -541,11 +541,12 @@ export async function runAgentWorkflow(
   let accumulatedContext = `User query: ${query}\n\nSupervisor plan:\n${plan}`;
 
   // Group parallel tasks
-  const groups: Array<Array<{ agent: AgentRole; task: string }>> = [];
-  let currentGroup: Array<{ agent: AgentRole; task: string }> = [];
+  const groups: Array<Array<{ agent: AgentRole; task: string; parallel?: boolean }>> = [];
+  let currentGroup: Array<{ agent: AgentRole; task: string; parallel?: boolean }> = [];
 
   for (const step of parsedPlan.steps) {
-    if (step.parallel && currentGroup.length > 0) {
+    if (step.parallel && currentGroup.length > 0 && currentGroup[currentGroup.length - 1].parallel !== false) {
+      // Add to existing parallel group
       currentGroup.push(step);
     } else {
       if (currentGroup.length > 0) {

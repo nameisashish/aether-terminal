@@ -3,895 +3,268 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Aether Terminal — AI-Native Terminal for Developers</title>
-  <meta name="description" content="The AI-native terminal with a full multi-agent dev team built in. Powered by Groq, OpenAI, Anthropic, Gemini, and xAI." />
+  <title>Aether Terminal — AI-Native Coding Terminal for Developers</title>
+  <meta name="description" content="The AI-native terminal with 8 specialized agents, local AI via Ollama, syntax highlighting, markdown chat, and human-in-the-loop security. Free and open source." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
   <style>
-    /* ── Reset ── */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
     :root {
-      --bg: #06060b;
-      --surface: #0d0d15;
-      --card: #13131f;
-      --border: #1e1e30;
-      --text: #e4e4ef;
-      --muted: #8888a0;
-      --dim: #555570;
-      --accent: #7c5cfc;
-      --accent-light: #9b7dff;
-      --accent-muted: rgba(124, 92, 252, 0.12);
-      --green: #4ade80;
-      --red: #f87171;
-      --yellow: #fbbf24;
-      --blue: #60a5fa;
-      --cyan: #22d3ee;
+      --bg: #06060b; --surface: #0d0d15; --card: #13131f; --border: #1e1e30;
+      --text: #e4e4ef; --muted: #8888a0; --dim: #555570;
+      --accent: #7c5cfc; --accent-light: #9b7dff; --accent-muted: rgba(124, 92, 252, 0.12);
+      --green: #4ade80; --red: #f87171; --yellow: #fbbf24; --blue: #60a5fa; --cyan: #22d3ee;
     }
-
     html { scroll-behavior: smooth; }
+    body { font-family: 'Inter', -apple-system, sans-serif; background: var(--bg); color: var(--text); -webkit-font-smoothing: antialiased; overflow-x: hidden; }
 
-    body {
-      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      -webkit-font-smoothing: antialiased;
-      overflow-x: hidden;
-    }
-
-    /* ── Nav ── */
-    nav {
-      position: fixed;
-      top: 0;
-      width: 100%;
-      z-index: 100;
-      padding: 16px 32px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      background: rgba(6, 6, 11, 0.8);
-      backdrop-filter: blur(16px);
-      border-bottom: 1px solid rgba(30, 30, 48, 0.5);
-    }
-
-    .nav-brand {
-      font-size: 16px;
-      font-weight: 700;
-      letter-spacing: 0.08em;
-      color: var(--text);
-    }
-
+    nav { position: fixed; top: 0; width: 100%; z-index: 100; padding: 16px 32px; display: flex; align-items: center; justify-content: space-between; background: rgba(6, 6, 11, 0.8); backdrop-filter: blur(16px); border-bottom: 1px solid rgba(30, 30, 48, 0.5); }
+    .nav-brand { font-size: 16px; font-weight: 700; letter-spacing: 0.08em; }
     .nav-brand span { color: var(--accent); }
-
     .nav-links { display: flex; gap: 28px; align-items: center; }
-    .nav-links a {
-      color: var(--muted);
-      text-decoration: none;
-      font-size: 14px;
-      font-weight: 500;
-      transition: color 0.2s;
-    }
+    .nav-links a { color: var(--muted); text-decoration: none; font-size: 14px; font-weight: 500; transition: color 0.2s; }
     .nav-links a:hover { color: var(--text); }
-
-    .nav-cta {
-      padding: 8px 20px;
-      border-radius: 8px;
-      background: var(--accent);
-      color: white !important;
-      font-weight: 600;
-      font-size: 13px;
-      transition: background 0.2s;
-    }
+    .nav-cta { padding: 8px 20px; border-radius: 8px; background: var(--accent); color: white !important; font-weight: 600; font-size: 13px; transition: background 0.2s; }
     .nav-cta:hover { background: var(--accent-light); }
 
-    /* ── Hero ── */
-    .hero {
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      text-align: center;
-      padding: 120px 24px 80px;
-      position: relative;
-      overflow: hidden;
-    }
+    .hero { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 120px 24px 80px; position: relative; overflow: hidden; }
+    .hero::before { content: ''; position: absolute; top: -200px; width: 800px; height: 800px; background: radial-gradient(circle, rgba(124, 92, 252, 0.08) 0%, transparent 70%); pointer-events: none; }
+    .hero-badge { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 100px; background: var(--accent-muted); border: 1px solid rgba(124, 92, 252, 0.2); font-size: 13px; color: var(--accent-light); font-weight: 500; margin-bottom: 32px; animation: fadeInUp 0.6s ease; }
+    .hero h1 { font-size: clamp(40px, 6vw, 72px); font-weight: 800; line-height: 1.1; margin-bottom: 24px; animation: fadeInUp 0.6s ease 0.1s both; }
+    .hero h1 .gradient { background: linear-gradient(135deg, var(--accent), var(--cyan), var(--accent-light)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    .hero p { font-size: 18px; color: var(--muted); max-width: 600px; line-height: 1.6; margin-bottom: 40px; animation: fadeInUp 0.6s ease 0.2s both; }
+    .hero-buttons { display: flex; gap: 12px; animation: fadeInUp 0.6s ease 0.3s both; }
+    .btn-hero { padding: 14px 28px; border-radius: 12px; font-size: 15px; font-weight: 600; cursor: pointer; border: none; transition: all 0.2s; text-decoration: none; display: inline-flex; align-items: center; gap: 8px; }
+    .btn-primary { background: var(--accent); color: white; box-shadow: 0 4px 24px rgba(124, 92, 252, 0.3); }
+    .btn-primary:hover { background: var(--accent-light); transform: translateY(-1px); box-shadow: 0 8px 32px rgba(124, 92, 252, 0.4); }
+    .btn-outline { background: transparent; color: var(--text); border: 1px solid var(--border); }
+    .btn-outline:hover { background: var(--card); border-color: var(--accent); }
 
-    .hero::before {
-      content: '';
-      position: absolute;
-      top: -200px;
-      width: 800px;
-      height: 800px;
-      background: radial-gradient(circle, rgba(124, 92, 252, 0.08) 0%, transparent 70%);
-      pointer-events: none;
-    }
-
-    .hero-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 6px 14px;
-      border-radius: 100px;
-      background: var(--accent-muted);
-      border: 1px solid rgba(124, 92, 252, 0.2);
-      font-size: 13px;
-      color: var(--accent-light);
-      font-weight: 500;
-      margin-bottom: 32px;
-      animation: fadeInUp 0.6s ease;
-    }
-
-    .hero h1 {
-      font-size: clamp(40px, 6vw, 72px);
-      font-weight: 800;
-      line-height: 1.1;
-      margin-bottom: 24px;
-      animation: fadeInUp 0.6s ease 0.1s both;
-    }
-
-    .hero h1 .gradient {
-      background: linear-gradient(135deg, var(--accent), var(--cyan), var(--accent-light));
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-    }
-
-    .hero p {
-      font-size: 18px;
-      color: var(--muted);
-      max-width: 560px;
-      line-height: 1.6;
-      margin-bottom: 40px;
-      animation: fadeInUp 0.6s ease 0.2s both;
-    }
-
-    .hero-buttons {
-      display: flex;
-      gap: 12px;
-      animation: fadeInUp 0.6s ease 0.3s both;
-    }
-
-    .btn-hero {
-      padding: 14px 28px;
-      border-radius: 12px;
-      font-size: 15px;
-      font-weight: 600;
-      cursor: pointer;
-      border: none;
-      transition: all 0.2s;
-      text-decoration: none;
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .btn-primary {
-      background: var(--accent);
-      color: white;
-      box-shadow: 0 4px 24px rgba(124, 92, 252, 0.3);
-    }
-    .btn-primary:hover {
-      background: var(--accent-light);
-      transform: translateY(-1px);
-      box-shadow: 0 8px 32px rgba(124, 92, 252, 0.4);
-    }
-
-    .btn-outline {
-      background: transparent;
-      color: var(--text);
-      border: 1px solid var(--border);
-    }
-    .btn-outline:hover {
-      background: var(--card);
-      border-color: var(--accent);
-    }
-
-    /* ── Terminal Preview ── */
-    .terminal-preview {
-      max-width: 900px;
-      width: 100%;
-      margin: 60px auto 0;
-      border-radius: 16px;
-      overflow: hidden;
-      border: 1px solid var(--border);
-      background: var(--surface);
-      box-shadow: 0 32px 64px rgba(0, 0, 0, 0.4);
-      animation: fadeInUp 0.8s ease 0.4s both;
-    }
-
-    .terminal-preview-bar {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 12px 16px;
-      background: var(--card);
-      border-bottom: 1px solid var(--border);
-    }
-
+    .terminal-preview { max-width: 900px; width: 100%; margin: 60px auto 0; border-radius: 16px; overflow: hidden; border: 1px solid var(--border); background: var(--surface); box-shadow: 0 32px 64px rgba(0, 0, 0, 0.4); animation: fadeInUp 0.8s ease 0.4s both; }
+    .terminal-preview-bar { display: flex; align-items: center; gap: 8px; padding: 12px 16px; background: var(--card); border-bottom: 1px solid var(--border); }
     .dot { width: 12px; height: 12px; border-radius: 50%; }
-    .dot-red { background: #ff5f57; }
-    .dot-yellow { background: #febc2e; }
-    .dot-green { background: #28c840; }
+    .dot-red { background: #ff5f57; } .dot-yellow { background: #febc2e; } .dot-green { background: #28c840; }
+    .terminal-preview-bar span { margin-left: 12px; font-size: 12px; color: var(--dim); font-family: 'JetBrains Mono', monospace; }
+    .terminal-preview-body { padding: 24px; font-family: 'JetBrains Mono', monospace; font-size: 14px; line-height: 1.8; min-height: 200px; }
+    .prompt { color: var(--green); } .cmd { color: var(--text); } .output { color: var(--muted); } .ai-tag { color: var(--accent); font-weight: 600; }
 
-    .terminal-preview-bar span {
-      margin-left: 12px;
-      font-size: 12px;
-      color: var(--dim);
-      font-family: 'JetBrains Mono', monospace;
-    }
+    .section { padding: 100px 24px; max-width: 1200px; margin: 0 auto; }
+    .section-alt { background: var(--surface); }
+    .section h2 { text-align: center; font-size: 36px; font-weight: 700; margin-bottom: 16px; }
+    .section > p, .section-inner > p { text-align: center; color: var(--muted); font-size: 16px; margin-bottom: 60px; max-width: 600px; margin-left: auto; margin-right: auto; }
+    .section-inner { max-width: 1200px; margin: 0 auto; padding: 100px 24px; }
 
-    .terminal-preview-body {
-      padding: 24px;
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 14px;
-      line-height: 1.8;
-      min-height: 200px;
-    }
+    .feature-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; }
+    .feature-card { padding: 28px; border-radius: 16px; background: var(--card); border: 1px solid var(--border); transition: all 0.3s; }
+    .feature-card:hover { border-color: var(--accent); transform: translateY(-2px); box-shadow: 0 8px 32px rgba(124, 92, 252, 0.1); }
+    .feature-icon { font-size: 28px; margin-bottom: 16px; }
+    .feature-card h3 { font-size: 17px; font-weight: 600; margin-bottom: 8px; }
+    .feature-card p { font-size: 14px; color: var(--muted); line-height: 1.6; }
 
-    .prompt { color: var(--green); }
-    .cmd { color: var(--text); }
-    .output { color: var(--muted); }
-    .ai-tag { color: var(--accent); font-weight: 600; }
+    .steps { max-width: 800px; margin: 0 auto; display: flex; flex-direction: column; }
+    .step { display: flex; gap: 20px; padding: 28px 0; }
+    .step + .step { border-top: 1px solid var(--border); }
+    .step-num { width: 40px; height: 40px; border-radius: 12px; background: var(--accent-muted); color: var(--accent); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 16px; flex-shrink: 0; border: 1px solid rgba(124, 92, 252, 0.2); }
+    .step-content h3 { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+    .step-content p { font-size: 14px; color: var(--muted); line-height: 1.6; }
+    .step-content code { background: var(--card); padding: 2px 8px; border-radius: 4px; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--green); border: 1px solid var(--border); }
 
-    /* ── Features ── */
-    .features {
-      padding: 120px 24px;
-      max-width: 1200px;
-      margin: 0 auto;
-    }
+    .agent-grid { max-width: 900px; margin: 0 auto; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+    .agent-card { padding: 16px 20px; border-radius: 12px; background: var(--card); border: 1px solid var(--border); display: flex; align-items: center; gap: 12px; transition: all 0.2s; }
+    .agent-card:hover { border-color: var(--accent); background: rgba(124, 92, 252, 0.04); }
+    .agent-emoji { font-size: 24px; } .agent-info h4 { font-size: 13px; font-weight: 600; } .agent-info p { font-size: 11px; color: var(--dim); margin-top: 2px; }
 
-    .features h2 {
-      text-align: center;
-      font-size: 36px;
-      font-weight: 700;
-      margin-bottom: 16px;
-    }
+    .setup-grid { max-width: 900px; margin: 0 auto; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+    .setup-card { padding: 24px; border-radius: 16px; background: var(--card); border: 1px solid var(--border); }
+    .setup-card h3 { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+    .tag { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px; display: inline-block; margin-bottom: 12px; }
+    .tag-free { background: rgba(74, 222, 128, 0.12); color: var(--green); }
+    .tag-fast { background: rgba(34, 211, 238, 0.12); color: var(--cyan); }
+    .tag-pro { background: rgba(251, 191, 36, 0.12); color: var(--yellow); }
+    .setup-card p { font-size: 13px; color: var(--muted); line-height: 1.5; margin-bottom: 12px; }
+    .setup-card code { display: block; background: var(--bg); padding: 8px 12px; border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--green); margin: 6px 0; border: 1px solid var(--border); }
 
-    .features > p {
-      text-align: center;
-      color: var(--muted);
-      font-size: 16px;
-      margin-bottom: 60px;
-    }
+    .shortcuts-table { max-width: 600px; margin: 0 auto; width: 100%; border-collapse: collapse; }
+    .shortcuts-table th, .shortcuts-table td { padding: 12px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 14px; }
+    .shortcuts-table th { color: var(--muted); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
+    .shortcuts-table kbd { background: var(--card); border: 1px solid var(--border); padding: 2px 8px; border-radius: 4px; font-family: 'JetBrains Mono', monospace; font-size: 12px; }
 
-    .feature-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-      gap: 20px;
-    }
-
-    .feature-card {
-      padding: 28px;
-      border-radius: 16px;
-      background: var(--card);
-      border: 1px solid var(--border);
-      transition: all 0.3s;
-    }
-
-    .feature-card:hover {
-      border-color: var(--accent);
-      transform: translateY(-2px);
-      box-shadow: 0 8px 32px rgba(124, 92, 252, 0.1);
-    }
-
-    .feature-icon {
-      font-size: 28px;
-      margin-bottom: 16px;
-    }
-
-    .feature-card h3 {
-      font-size: 17px;
-      font-weight: 600;
-      margin-bottom: 8px;
-    }
-
-    .feature-card p {
-      font-size: 14px;
-      color: var(--muted);
-      line-height: 1.6;
-    }
-
-    /* ── Agents Section ── */
-    .agents {
-      padding: 100px 24px;
-      background: var(--surface);
-    }
-
-    .agents h2 {
-      text-align: center;
-      font-size: 36px;
-      font-weight: 700;
-      margin-bottom: 16px;
-    }
-
-    .agents > p {
-      text-align: center;
-      color: var(--muted);
-      font-size: 16px;
-      margin-bottom: 60px;
-      max-width: 600px;
-      margin-left: auto;
-      margin-right: auto;
-    }
-
-    .agent-grid {
-      max-width: 900px;
-      margin: 0 auto;
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: 12px;
-    }
-
-    .agent-card {
-      padding: 16px 20px;
-      border-radius: 12px;
-      background: var(--card);
-      border: 1px solid var(--border);
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      transition: all 0.2s;
-    }
-
-    .agent-card:hover {
-      border-color: var(--accent);
-      background: rgba(124, 92, 252, 0.04);
-    }
-
-    .agent-emoji { font-size: 24px; }
-    .agent-info h4 { font-size: 13px; font-weight: 600; }
-    .agent-info p { font-size: 11px; color: var(--dim); margin-top: 2px; }
-
-    /* ── Download Section ── */
-    .download {
-      padding: 100px 24px;
-      text-align: center;
-    }
-
-    .download h2 {
-      font-size: 36px;
-      font-weight: 700;
-      margin-bottom: 16px;
-    }
-
-    .download > p {
-      color: var(--muted);
-      font-size: 16px;
-      margin-bottom: 48px;
-    }
-
-    .download-grid {
-      max-width: 700px;
-      margin: 0 auto;
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 16px;
-    }
-
-    .download-card {
-      padding: 28px 20px;
-      border-radius: 16px;
-      background: var(--card);
-      border: 1px solid var(--border);
-      text-align: center;
-      text-decoration: none;
-      color: var(--text);
-      transition: all 0.2s;
-    }
-
-    .download-card:hover {
-      border-color: var(--accent);
-      transform: translateY(-2px);
-    }
-
+    .download-grid { max-width: 700px; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    .download-card { padding: 28px 20px; border-radius: 16px; background: var(--card); border: 1px solid var(--border); text-align: center; text-decoration: none; color: var(--text); transition: all 0.2s; }
+    .download-card:hover { border-color: var(--accent); transform: translateY(-2px); }
     .download-card .os-icon { font-size: 32px; margin-bottom: 12px; }
     .download-card h4 { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
     .download-card p { font-size: 12px; color: var(--dim); }
 
-    /* ── Install Guide ── */
-    .install-guide {
-      padding: 100px 24px;
-      max-width: 900px;
-      margin: 0 auto;
-    }
+    footer { padding: 40px 24px; text-align: center; border-top: 1px solid var(--border); color: var(--dim); font-size: 13px; }
+    footer a { color: var(--accent); text-decoration: none; }
 
-    .install-guide h2 {
-      text-align: center;
-      font-size: 36px;
-      font-weight: 700;
-      margin-bottom: 16px;
-    }
-
-    .install-guide > p {
-      text-align: center;
-      color: var(--muted);
-      font-size: 16px;
-      margin-bottom: 48px;
-    }
-
-    .install-tabs {
-      display: flex;
-      gap: 8px;
-      margin-bottom: 24px;
-      border-bottom: 1px solid var(--border);
-      padding-bottom: 0;
-    }
-
-    .install-tab {
-      padding: 10px 20px;
-      background: none;
-      border: none;
-      color: var(--muted);
-      font-size: 14px;
-      font-family: inherit;
-      cursor: pointer;
-      border-bottom: 2px solid transparent;
-      transition: all 0.2s;
-    }
-
-    .install-tab:hover { color: var(--text); }
-    .install-tab.active {
-      color: var(--accent);
-      border-bottom-color: var(--accent);
-    }
-
-    .install-panel {
-      display: none;
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 32px;
-    }
-
-    .install-panel.active { display: block; }
-
-    .install-panel h3 {
-      font-size: 18px;
-      font-weight: 600;
-      margin-bottom: 20px;
-      color: var(--accent-light);
-    }
-
-    .install-step {
-      display: flex;
-      gap: 16px;
-      margin-bottom: 20px;
-    }
-
-    .step-num {
-      width: 28px;
-      height: 28px;
-      border-radius: 50%;
-      background: var(--accent-muted);
-      color: var(--accent);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 13px;
-      font-weight: 700;
-      flex-shrink: 0;
-      margin-top: 2px;
-    }
-
-    .step-content { flex: 1; }
-    .step-content p { font-size: 14px; line-height: 1.7; color: var(--text); }
-    .step-content code {
-      background: var(--bg);
-      padding: 2px 8px;
-      border-radius: 6px;
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 13px;
-      color: var(--green);
-    }
-
-    .cmd-block {
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 14px 18px;
-      margin-top: 10px;
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 13px;
-      color: var(--green);
-      user-select: all;
-    }
-
-    .install-note {
-      margin-top: 24px;
-      padding: 16px 20px;
-      background: var(--accent-muted);
-      border-radius: 10px;
-      font-size: 13px;
-      color: var(--muted);
-      line-height: 1.6;
-    }
-
-    .install-note strong { color: var(--accent-light); }
-
-    /* ── Footer ── */
-    footer {
-      padding: 40px 24px;
-      text-align: center;
-      border-top: 1px solid var(--border);
-      color: var(--dim);
-      font-size: 13px;
-    }
-
-    footer a {
-      color: var(--accent);
-      text-decoration: none;
-    }
-
-    /* ── Animations ── */
-    @keyframes fadeInUp {
-      from { opacity: 0; transform: translateY(20px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-
-    /* ── Responsive ── */
-    @media (max-width: 768px) {
-      .nav-links { display: none; }
-      .feature-grid { grid-template-columns: 1fr; }
-      .download-grid { grid-template-columns: 1fr; }
-      .agent-grid { grid-template-columns: repeat(2, 1fr); }
-    }
+    @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+    @media (max-width: 768px) { .nav-links { display: none; } .feature-grid, .setup-grid { grid-template-columns: 1fr; } .download-grid { grid-template-columns: 1fr; } .agent-grid { grid-template-columns: repeat(2, 1fr); } .step { flex-direction: column; gap: 12px; } }
   </style>
 </head>
 <body>
-  <!-- Navigation -->
   <nav>
     <div class="nav-brand"><span>AETHER</span> Terminal</div>
     <div class="nav-links">
       <a href="#features">Features</a>
+      <a href="#how-it-works">How It Works</a>
       <a href="#agents">Agents</a>
+      <a href="#ai-setup">AI Setup</a>
       <a href="#download">Download</a>
-      <a href="#install-guide">Install Guide</a>
       <a href="https://github.com/nameisashish/aether-terminal" target="_blank">GitHub</a>
       <a href="#download" class="nav-cta">Download Now</a>
     </div>
   </nav>
 
-  <!-- Hero -->
   <section class="hero">
-    <div class="hero-badge">✨ Powered by Groq + Llama 3.1 70B</div>
-    <h1>
-      Your Entire Dev Team<br />
-      <span class="gradient">Inside a Terminal</span>
-    </h1>
-    <p>
-      Aether Terminal is an AI-native terminal with 8 specialized agents — an architect, coder, reviewer, tester, and more — all working together to build, test, and deploy your code.
-    </p>
+    <div class="hero-badge">🌀 v0.3.0 — Unified AI + Agent Team · Smart Routing · Ollama-First</div>
+    <h1>Your Entire Dev Team<br /><span class="gradient">Inside a Terminal</span></h1>
+    <p>Aether Terminal is a Claude Code-like AI coding environment with a unified AI brain that auto-delegates to 8 specialist agents. Ollama-first local AI, smart routing, inline approvals, and full codebase access — all in one desktop app.</p>
     <div class="hero-buttons">
-      <a href="#download" class="btn-hero btn-primary">
-        ⬇ Download for Free
-      </a>
-      <a href="https://github.com/nameisashish/aether-terminal" class="btn-hero btn-outline" target="_blank">
-        ⭐ Star on GitHub
-      </a>
+      <a href="#download" class="btn-hero btn-primary">⬇ Download for Free</a>
+      <a href="https://github.com/nameisashish/aether-terminal" class="btn-hero btn-outline" target="_blank">⭐ Star on GitHub</a>
     </div>
-
-    <!-- Terminal Preview -->
     <div class="terminal-preview">
       <div class="terminal-preview-bar">
-        <div class="dot dot-red"></div>
-        <div class="dot dot-yellow"></div>
-        <div class="dot dot-green"></div>
+        <div class="dot dot-red"></div><div class="dot dot-yellow"></div><div class="dot dot-green"></div>
         <span>aether — zsh — 120×40</span>
       </div>
       <div class="terminal-preview-body">
-        <div><span class="prompt">~/projects ❯</span> <span class="cmd">aether agent "Build a REST API with auth"</span></div>
-        <div><span class="ai-tag">[AI]</span> <span class="output">🎯 Supervisor: Analyzing task, assigning to agents...</span></div>
-        <div><span class="ai-tag">[AI]</span> <span class="output">🏗️ Architect: Designing API structure with JWT auth...</span></div>
-        <div><span class="ai-tag">[AI]</span> <span class="output">💻 Coder: Writing Express routes and middleware...</span></div>
-        <div><span class="ai-tag">[AI]</span> <span class="output">🔍 Reviewer: Checking code quality and security...</span></div>
-        <div><span class="ai-tag">[AI]</span> <span class="output">🧪 Tester: Creating unit tests with 94% coverage...</span></div>
-        <div><span class="ai-tag">[AI]</span> <span class="output">✅ All agents complete. 12 files created, all tests passing.</span></div>
-        <div><span class="prompt">~/projects ❯</span> <span class="cmd" style="opacity:0.4">▌</span></div>
+        <div><span class="prompt">~/myproject ❯</span> <span class="cmd">"Add auth middleware and write tests for it"</span></div>
+        <div><span class="ai-tag">[AI]</span> <span class="output">📂 Listed: ~/myproject/src (18 entries)</span></div>
+        <div><span class="ai-tag">[AI]</span> <span class="output">📖 Read file: src/server.ts (1,840 chars)</span></div>
+        <div><span class="ai-tag">[AI]</span> <span class="output">🤖 <strong>Delegating to 8-agent specialist team...</strong></span></div>
+        <div><span class="ai-tag">[🏗️ Architect]</span> <span class="output">Designing JWT auth middleware with refresh tokens</span></div>
+        <div><span class="ai-tag">[💻 Coder]</span> <span class="output">✍️ Wrote file: src/middleware/auth.ts</span></div>
+        <div><span class="ai-tag">[🔍 Reviewer]</span> <span class="output">Code review passed — no security issues</span></div>
+        <div><span class="ai-tag">[🧪 Tester]</span> <span class="output">✅ 12 tests written, all passing</span></div>
+        <div><span class="prompt">~/myproject ❯</span> <span class="cmd" style="opacity:0.4">▌</span></div>
       </div>
     </div>
   </section>
 
-  <!-- Features -->
-  <section class="features" id="features">
+  <section class="section" id="features">
     <h2>Built Different</h2>
-    <p>Everything you need in a terminal, plus an entire AI dev team.</p>
+    <p>A unified AI brain that thinks like Claude Code — smart routing, prompt grounding, agentic tool loops, and auto-delegation to specialist agents. All with your approval.</p>
     <div class="feature-grid">
-      <div class="feature-card">
-        <div class="feature-icon">⚡</div>
-        <h3>Real PTY Terminal</h3>
-        <p>Full pseudoterminal with ANSI colors, vim/tmux support, mouse events, and native shell integration. Feels like your system terminal.</p>
-      </div>
-      <div class="feature-card">
-        <div class="feature-icon">🤖</div>
-        <h3>Multi-Provider AI</h3>
-        <p>Groq (default), OpenAI, Anthropic Claude, Google Gemini, and xAI Grok. Switch providers and models instantly.</p>
-      </div>
-      <div class="feature-card">
-        <div class="feature-icon">👥</div>
-        <h3>8-Agent Team</h3>
-        <p>Supervisor, Architect, Coder, Reviewer, Tester, QA, Documenter, and Deployer — all working in parallel on your tasks.</p>
-      </div>
-      <div class="feature-card">
-        <div class="feature-icon">🛡️</div>
-        <h3>Human-in-the-Loop</h3>
-        <p>Every file write and shell command requires your explicit approval. Full control, zero surprises.</p>
-      </div>
-      <div class="feature-card">
-        <div class="feature-icon">🗂️</div>
-        <h3>File Explorer</h3>
-        <p>Built-in file tree with AI context selection. Select files to give your agents full project awareness.</p>
-      </div>
-      <div class="feature-card">
-        <div class="feature-icon">💻</div>
-        <h3>Cross-Platform</h3>
-        <p>Built with Tauri v2 for native performance. Available on macOS, Windows, and Linux.</p>
-      </div>
+      <div class="feature-card"><div class="feature-icon">⚡</div><h3>Real PTY Terminal</h3><p>Full pseudoterminal with ANSI colors, vim/tmux support, mouse events, and native shell. GPU-accelerated via WebGL.</p></div>
+      <div class="feature-card"><div class="feature-icon">🏠</div><h3>Local AI (Ollama)</h3><p>Run AI completely offline with any Ollama model — Gemma, Llama, Qwen, Mistral, CodeLlama. Free forever, zero data leaves your machine.</p></div>
+      <div class="feature-card"><div class="feature-icon">🤖</div><h3>7 AI Providers</h3><p>Ollama (local), Groq, OpenAI, Anthropic, Google Gemini, xAI Grok, OpenRouter. Switch freely in settings.</p></div>
+      <div class="feature-card"><div class="feature-icon">🧠</div><h3>Smart Routing</h3><p>AI decides: simple questions answered directly, complex tasks auto-delegated to the 8-agent team. Like Claude Code — one interface, maximum intelligence.</p></div>
+      <div class="feature-card"><div class="feature-icon">🔧</div><h3>Agentic Tool Loops</h3><p>AI reads files, searches codebases, writes code, and runs commands — through a multi-step tool-calling loop with prompt grounding. Watch it work in real-time.</p></div>
+      <div class="feature-card"><div class="feature-icon">🛡️</div><h3>Inline Approvals</h3><p>Every file write and shell command shows an inline approve/reject UI. Full control, zero surprises. Agent progress streams live in chat.</p></div>
+      <div class="feature-card"><div class="feature-icon">👥</div><h3>8-Agent Team (Auto-Delegated)</h3><p>Supervisor, Architect, Coder, Reviewer, Tester, QA, Documenter, Deployer — AI auto-delegates complex tasks, shows progress inline.</p></div>
+      <div class="feature-card"><div class="feature-icon">🗂️</div><h3>File Explorer</h3><p>Built-in file tree with context menus, create/delete, and AI context selection. Click files to view with syntax highlighting.</p></div>
+      <div class="feature-card"><div class="feature-icon">💻</div><h3>Cross-Platform</h3><p>Built with Tauri v2 for native performance (~10MB). Available on macOS, Windows, and Linux.</p></div>
     </div>
   </section>
 
-  <!-- Agents -->
-  <section class="agents" id="agents">
+  <div class="section-alt">
+    <div class="section-inner" id="how-it-works">
+      <h2>How It Works</h2>
+      <p>Download, install, and start coding with AI in under 5 minutes.</p>
+      <div class="steps">
+        <div class="step"><div class="step-num">1</div><div class="step-content"><h3>Download & Install</h3><p>Download the app for your OS from the <a href="#download" style="color:var(--accent);">download section</a> below, or build from source with <code>pnpm tauri dev</code>.</p></div></div>
+        <div class="step"><div class="step-num">2</div><div class="step-content"><h3>Set Up AI (choose one)</h3><p><strong>Local (free):</strong> Install Ollama → run <code>ollama serve</code> → run <code>ollama pull gemma2:9b</code>. Aether auto-detects your models.</p><p style="margin-top:6px;"><strong>Cloud (fast):</strong> Get a free Groq API key → paste in Settings (⌘ ,) → done.</p></div></div>
+        <div class="step"><div class="step-num">3</div><div class="step-content"><h3>Connect a Project</h3><p>Click the folder icon or use <code>File → Open Folder</code> to connect your project. The file explorer and AI get full codebase access.</p></div></div>
+        <div class="step"><div class="step-num">4</div><div class="step-content"><h3>Chat with AI</h3><p>Click the ✨ sparkle icon to open AI chat. Ask questions, request code changes, or run the quick-start prompts. The AI reads files, writes patches, and runs commands — always asking for approval.</p></div></div>
+        <div class="step"><div class="step-num">5</div><div class="step-content"><h3>AI Auto-Delegates Complex Tasks</h3><p>For multi-file features, refactoring, or anything complex — the AI automatically delegates to the 8-agent team. No mode toggle needed. Agent progress and approvals show inline in chat.</p></div></div>
+      </div>
+    </div>
+  </div>
+
+  <section class="section" id="agents">
     <h2>Meet Your Agent Team</h2>
-    <p>8 specialized AI agents, orchestrated by a supervisor, working together to tackle any development task.</p>
+    <p>8 specialized AI agents, each expert in their domain, orchestrated by a supervisor.</p>
     <div class="agent-grid">
-      <div class="agent-card">
-        <span class="agent-emoji">🎯</span>
-        <div class="agent-info">
-          <h4>Supervisor</h4>
-          <p>Orchestrates the team</p>
-        </div>
-      </div>
-      <div class="agent-card">
-        <span class="agent-emoji">🏗️</span>
-        <div class="agent-info">
-          <h4>Architect</h4>
-          <p>Designs systems</p>
-        </div>
-      </div>
-      <div class="agent-card">
-        <span class="agent-emoji">💻</span>
-        <div class="agent-info">
-          <h4>Coder</h4>
-          <p>Writes production code</p>
-        </div>
-      </div>
-      <div class="agent-card">
-        <span class="agent-emoji">🔍</span>
-        <div class="agent-info">
-          <h4>Code Reviewer</h4>
-          <p>Reviews quality</p>
-        </div>
-      </div>
-      <div class="agent-card">
-        <span class="agent-emoji">🧪</span>
-        <div class="agent-info">
-          <h4>Tester</h4>
-          <p>Creates & runs tests</p>
-        </div>
-      </div>
-      <div class="agent-card">
-        <span class="agent-emoji">✅</span>
-        <div class="agent-info">
-          <h4>QA Validator</h4>
-          <p>Validates quality</p>
-        </div>
-      </div>
-      <div class="agent-card">
-        <span class="agent-emoji">📝</span>
-        <div class="agent-info">
-          <h4>Documenter</h4>
-          <p>Writes documentation</p>
-        </div>
-      </div>
-      <div class="agent-card">
-        <span class="agent-emoji">🚀</span>
-        <div class="agent-info">
-          <h4>Deployer</h4>
-          <p>Handles deployment</p>
-        </div>
-      </div>
+      <div class="agent-card"><span class="agent-emoji">🎯</span><div class="agent-info"><h4>Supervisor</h4><p>Creates plans, delegates</p></div></div>
+      <div class="agent-card"><span class="agent-emoji">🏗️</span><div class="agent-info"><h4>Architect</h4><p>Designs architecture</p></div></div>
+      <div class="agent-card"><span class="agent-emoji">💻</span><div class="agent-info"><h4>Coder</h4><p>Writes & modifies code</p></div></div>
+      <div class="agent-card"><span class="agent-emoji">🔍</span><div class="agent-info"><h4>Code Reviewer</h4><p>Reviews quality</p></div></div>
+      <div class="agent-card"><span class="agent-emoji">🧪</span><div class="agent-info"><h4>Tester</h4><p>Creates & runs tests</p></div></div>
+      <div class="agent-card"><span class="agent-emoji">✅</span><div class="agent-info"><h4>QA Validator</h4><p>Validates edge cases</p></div></div>
+      <div class="agent-card"><span class="agent-emoji">📝</span><div class="agent-info"><h4>Documenter</h4><p>Writes docs & READMEs</p></div></div>
+      <div class="agent-card"><span class="agent-emoji">🚀</span><div class="agent-info"><h4>Deployer</h4><p>Handles builds & deploys</p></div></div>
     </div>
   </section>
 
-  <!-- Download -->
-  <section class="download" id="download">
-    <h2>Download Aether Terminal</h2>
-    <p>Free and open source. Available for all platforms.</p>
-    <div class="download-grid">
-      <a id="download-mac" href="https://github.com/nameisashish/aether-terminal/releases/latest" class="download-card" target="_blank">
-        <div class="os-icon">🍎</div>
-        <h4>macOS</h4>
-        <p>.dmg (Apple Silicon & Intel)</p>
-      </a>
-      <a id="download-win" href="https://github.com/nameisashish/aether-terminal/releases/latest" class="download-card" target="_blank">
-        <div class="os-icon">🪟</div>
-        <h4>Windows</h4>
-        <p>.exe installer</p>
-      </a>
-      <a id="download-linux" href="https://github.com/nameisashish/aether-terminal/releases/latest" class="download-card" target="_blank">
-        <div class="os-icon">🐧</div>
-        <h4>Linux</h4>
-        <p>.AppImage / .deb</p>
-      </a>
+  <div class="section-alt">
+    <div class="section-inner" id="ai-setup">
+      <h2>AI Setup Options</h2>
+      <p>Choose any provider. Aether auto-detects your models and API keys.</p>
+      <div class="setup-grid">
+        <div class="setup-card">
+          <h3>🏠 Local AI (Ollama)</h3><span class="tag tag-free">FREE · OFFLINE · PRIVATE</span>
+          <p>Run any model locally. Zero data leaves your machine.</p>
+          <code>brew install ollama</code><code>ollama serve</code><code>ollama pull gemma2:9b</code>
+          <p style="font-size:11px;margin-top:8px;">Works with: Gemma, Llama, Qwen, Mistral, CodeLlama, DeepSeek, and any Ollama model.</p>
+        </div>
+        <div class="setup-card">
+          <h3>⚡ Groq</h3><span class="tag tag-fast">FREE TIER · ULTRA FAST</span>
+          <p>Cloud-based, blazing fast inference. Free tier available.</p>
+          <p>1. Visit <a href="https://console.groq.com" target="_blank" style="color:var(--accent);">console.groq.com</a><br>2. Create free account & get API key<br>3. Paste in Settings → API Keys</p>
+        </div>
+        <div class="setup-card">
+          <h3>🌐 Other Providers</h3><span class="tag tag-pro">PAID · PREMIUM MODELS</span>
+          <p>OpenAI (GPT-4o), Anthropic (Claude), Google (Gemini), xAI (Grok), OpenRouter (100+ models).</p>
+          <p>Get an API key → paste in Settings → select model.</p>
+        </div>
+      </div>
     </div>
-    <p style="margin-top:1.5rem;opacity:0.5;font-size:0.85rem;">
-      All downloads available on the <a href="https://github.com/nameisashish/aether-terminal/releases" target="_blank" style="color:var(--accent);">GitHub Releases</a> page.
-    </p>
+  </div>
+
+  <section class="section" id="shortcuts">
+    <h2>Keyboard Shortcuts</h2>
+    <p>Built for speed. Everything accessible from the keyboard.</p>
+    <table class="shortcuts-table">
+      <thead><tr><th>Shortcut</th><th>Action</th></tr></thead>
+      <tbody>
+        <tr><td><kbd>⌘</kbd> + <kbd>T</kbd></td><td>New terminal tab</td></tr>
+        <tr><td><kbd>⌘</kbd> + <kbd>W</kbd></td><td>Close current tab</td></tr>
+        <tr><td><kbd>⌘</kbd> + <kbd>,</kbd></td><td>Open Settings</td></tr>
+        <tr><td><kbd>Enter</kbd></td><td>Send message / Approve action</td></tr>
+        <tr><td><kbd>Escape</kbd></td><td>Reject action / Close panel</td></tr>
+        <tr><td><kbd>Shift</kbd> + <kbd>Enter</kbd></td><td>New line in chat</td></tr>
+      </tbody>
+    </table>
   </section>
 
-  <!-- Install Guide -->
-  <section class="install-guide" id="install-guide">
-    <h2>Installation Guide</h2>
-    <p>Aether Terminal is open-source and free. Follow these quick steps to get started on your OS.</p>
-
-    <div class="install-tabs">
-      <button class="install-tab active" onclick="showTab('mac')">macOS</button>
-      <button class="install-tab" onclick="showTab('win')">Windows</button>
-      <button class="install-tab" onclick="showTab('linux')">Linux</button>
+  <div class="section-alt" id="download">
+    <div class="section-inner" style="text-align:center;">
+      <h2>Download Aether Terminal</h2>
+      <p>Free and open source. v0.3.0 — latest release.</p>
+      <div class="download-grid">
+        <a id="download-mac" href="https://github.com/nameisashish/aether-terminal/releases/latest" class="download-card" target="_blank"><div class="os-icon">🍎</div><h4>macOS</h4><p>.dmg (Apple Silicon & Intel)</p></a>
+        <a id="download-win" href="https://github.com/nameisashish/aether-terminal/releases/latest" class="download-card" target="_blank"><div class="os-icon">🪟</div><h4>Windows</h4><p>.exe / .msi installer</p></a>
+        <a id="download-linux" href="https://github.com/nameisashish/aether-terminal/releases/latest" class="download-card" target="_blank"><div class="os-icon">🐧</div><h4>Linux</h4><p>.AppImage / .deb</p></a>
+      </div>
+      <p style="margin-top:1.5rem;opacity:0.5;font-size:0.85rem;">Or build from source: <code style="background:var(--card);padding:2px 8px;border-radius:4px;font-size:12px;color:var(--green);">git clone && pnpm install && pnpm tauri dev</code></p>
     </div>
+  </div>
 
-    <div id="panel-mac" class="install-panel active">
-      <h3>macOS Installation</h3>
-      <div class="install-step">
-        <div class="step-num">1</div>
-        <div class="step-content">
-          <p>Download the <strong>.dmg</strong> file from the Download section above (Apple Silicon or Intel).</p>
-        </div>
-      </div>
-      <div class="install-step">
-        <div class="step-num">2</div>
-        <div class="step-content">
-          <p>Open the <strong>.dmg</strong> and drag <strong>Aether Terminal</strong> into your Applications folder.</p>
-        </div>
-      </div>
-      <div class="install-step">
-        <div class="step-num">3</div>
-        <div class="step-content">
-          <p>On first launch, macOS will show a security warning. <strong>Don't double-click.</strong> Instead, <strong>right-click</strong> (or Control-click) the app and select <strong>"Open"</strong>.</p>
-        </div>
-      </div>
-      <div class="install-step">
-        <div class="step-num">4</div>
-        <div class="step-content">
-          <p>Click <strong>"Open"</strong> in the dialog that appears. You only need to do this once — after that it opens normally.</p>
-        </div>
-      </div>
-      <div class="install-note">
-        <strong>Alternative:</strong> If right-click doesn't work, open Terminal and run:
-        <div class="cmd-block">xattr -cr /Applications/Aether\ Terminal.app</div>
-        This removes the quarantine flag. Then open the app normally.
-      </div>
-    </div>
-
-    <div id="panel-win" class="install-panel">
-      <h3>Windows Installation</h3>
-      <div class="install-step">
-        <div class="step-num">1</div>
-        <div class="step-content">
-          <p>Download the <strong>.exe</strong> installer from the Download section above.</p>
-        </div>
-      </div>
-      <div class="install-step">
-        <div class="step-num">2</div>
-        <div class="step-content">
-          <p>Run the installer. Windows SmartScreen may show <strong>"Windows protected your PC"</strong>.</p>
-        </div>
-      </div>
-      <div class="install-step">
-        <div class="step-num">3</div>
-        <div class="step-content">
-          <p>Click <strong>"More info"</strong>, then click <strong>"Run anyway"</strong>.</p>
-        </div>
-      </div>
-      <div class="install-step">
-        <div class="step-num">4</div>
-        <div class="step-content">
-          <p>Follow the installer prompts. Aether Terminal will be added to your Start menu.</p>
-        </div>
-      </div>
-      <div class="install-note">
-        <strong>Why this happens:</strong> Aether Terminal is open-source and free. Code signing certificates cost hundreds of dollars per year. The app is safe — you can <a href="https://github.com/nameisashish/aether-terminal" target="_blank" style="color:var(--accent);">review the source code</a> yourself.
-      </div>
-    </div>
-
-    <div id="panel-linux" class="install-panel">
-      <h3>Linux Installation</h3>
-      <div class="install-step">
-        <div class="step-num">1</div>
-        <div class="step-content">
-          <p>Download the <strong>.AppImage</strong> or <strong>.deb</strong> file from the Download section above.</p>
-        </div>
-      </div>
-      <div class="install-step">
-        <div class="step-num">2</div>
-        <div class="step-content">
-          <p><strong>For .AppImage:</strong> Make it executable and run it:</p>
-          <div class="cmd-block">chmod +x Aether.Terminal_*.AppImage && ./Aether.Terminal_*.AppImage</div>
-        </div>
-      </div>
-      <div class="install-step">
-        <div class="step-num">3</div>
-        <div class="step-content">
-          <p><strong>For .deb (Ubuntu/Debian):</strong></p>
-          <div class="cmd-block">sudo dpkg -i Aether.Terminal_*.deb</div>
-        </div>
-      </div>
-      <div class="install-note">
-        <strong>No warnings on Linux.</strong> Linux does not have the same gatekeeper restrictions as macOS or Windows. The app runs immediately after installation.
-      </div>
-    </div>
-  </section>
-
-  <!-- Footer -->
   <footer>
-    <p>
-      Aether Terminal — Developed by <strong>ASHISH KISHORE</strong>
-      <br />
-      Built with Tauri v2, React, xterm.js, and LangChain.
-      <br />
-      <a href="https://github.com/nameisashish/aether-terminal">GitHub</a> ·
-      Default LLM: Groq + Llama 3.1 70B
-    </p>
+    <p>Aether Terminal v0.3.0 — Developed by <strong>ASHISH KISHORE</strong><br />Built with Tauri v2 · React 19 · xterm.js · LangChain.js · Ollama<br /><a href="https://github.com/nameisashish/aether-terminal">GitHub</a> · <a href="https://github.com/nameisashish/aether-terminal/releases">Releases</a> · MIT License</p>
   </footer>
 
   <script>
-    // Install guide tab switching
-    function showTab(os) {
-      document.querySelectorAll('.install-tab').forEach(function(t) { t.classList.remove('active'); });
-      document.querySelectorAll('.install-panel').forEach(function(p) { p.classList.remove('active'); });
-      document.getElementById('panel-' + os).classList.add('active');
-      event.target.classList.add('active');
-    }
-
-    // Auto-detect OS and highlight the right download card
     (function() {
-      var ua = navigator.userAgent.toLowerCase();
-      var highlight = null;
-      if (ua.indexOf('mac') !== -1) highlight = 'download-mac';
-      else if (ua.indexOf('win') !== -1) highlight = 'download-win';
-      else if (ua.indexOf('linux') !== -1) highlight = 'download-linux';
-
-      if (highlight) {
-        var el = document.getElementById(highlight);
-        if (el) el.style.borderColor = 'var(--accent)';
-      }
-
-      // Auto-select install guide tab for user's OS
-      var osTab = null;
-      if (ua.indexOf('mac') !== -1) osTab = 'mac';
-      else if (ua.indexOf('win') !== -1) osTab = 'win';
-      else if (ua.indexOf('linux') !== -1) osTab = 'linux';
-      if (osTab) {
-        document.querySelectorAll('.install-tab').forEach(function(t) { t.classList.remove('active'); });
-        document.querySelectorAll('.install-panel').forEach(function(p) { p.classList.remove('active'); });
-        document.getElementById('panel-' + osTab).classList.add('active');
-        document.querySelectorAll('.install-tab').forEach(function(t) {
-          if (t.textContent.toLowerCase().indexOf(osTab === 'mac' ? 'mac' : osTab === 'win' ? 'win' : 'linux') !== -1) t.classList.add('active');
-        });
-      }
-
-      // Fetch latest release and set direct download links
+      var ua = navigator.userAgent.toLowerCase(), hl = null;
+      if (ua.indexOf('mac') !== -1) hl = 'download-mac';
+      else if (ua.indexOf('win') !== -1) hl = 'download-win';
+      else if (ua.indexOf('linux') !== -1) hl = 'download-linux';
+      if (hl) { var el = document.getElementById(hl); if (el) el.style.borderColor = 'var(--accent)'; }
       fetch('https://api.github.com/repos/nameisashish/aether-terminal/releases/latest')
         .then(function(r) { return r.json(); })
-        .then(function(data) {
-          if (!data.assets) return;
-          data.assets.forEach(function(asset) {
-            var name = asset.name.toLowerCase();
-            var url = asset.browser_download_url;
-            if (name.endsWith('.dmg')) {
-              document.getElementById('download-mac').href = url;
-            } else if (name.endsWith('.exe') || name.endsWith('.msi')) {
-              document.getElementById('download-win').href = url;
-            } else if (name.endsWith('.appimage') || name.endsWith('.deb')) {
-              var el = document.getElementById('download-linux');
-              if (el.href.indexOf('releases/latest') !== -1 || name.endsWith('.appimage')) {
-                el.href = url;
-              }
-            }
+        .then(function(d) {
+          if (!d.assets) return;
+          d.assets.forEach(function(a) {
+            var n = a.name.toLowerCase(), u = a.browser_download_url;
+            if (n.endsWith('.dmg')) { var e = document.getElementById('download-mac'); if (e) e.href = u; }
+            else if (n.endsWith('.exe') || n.endsWith('.msi')) { var e = document.getElementById('download-win'); if (e) e.href = u; }
+            else if (n.endsWith('.appimage') || n.endsWith('.deb')) { var e = document.getElementById('download-linux'); if (e) e.href = u; }
           });
-        })
-        .catch(function() { /* fallback: links stay pointing to releases page */ });
+        }).catch(function() {});
     })();
   </script>
 </body>
