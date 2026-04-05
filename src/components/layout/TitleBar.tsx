@@ -1,18 +1,16 @@
 // ==========================================
 // Title Bar Component
 // Top bar with app title, file explorer toggle,
-// agent team, AI mode, and settings buttons.
+// AI mode, and settings buttons.
 // ==========================================
 
-import { Sparkles, Settings, Users, FolderOpen } from "lucide-react";
+import { Sparkles, Settings, FolderOpen } from "lucide-react";
 import { useWorkspaceStore } from "../../stores/workspaceStore";
 
 interface TitleBarProps {
   aiMode: boolean;
   onToggleAiMode: () => void;
   onOpenSettings: () => void;
-  onToggleAgents: () => void;
-  agentDashboardOpen: boolean;
   onToggleExplorer: () => void;
   explorerOpen: boolean;
 }
@@ -21,8 +19,6 @@ export function TitleBar({
   aiMode,
   onToggleAiMode,
   onOpenSettings,
-  onToggleAgents,
-  agentDashboardOpen,
   onToggleExplorer,
   explorerOpen,
 }: TitleBarProps) {
@@ -81,35 +77,11 @@ export function TitleBar({
         className="title-bar-controls"
         style={{ display: "flex", gap: "4px" }}
       >
-        {/* Agent team toggle */}
-        <button
-          className="icon-btn"
-          onClick={onToggleAgents}
-          title="Agent Team"
-          style={{
-            color: agentDashboardOpen ? "var(--accent)" : "var(--text-muted)",
-            background: agentDashboardOpen
-              ? "var(--accent-muted)"
-              : "transparent",
-            borderRadius: "6px",
-            width: "auto",
-            padding: "0 10px",
-            gap: "4px",
-            display: "flex",
-            alignItems: "center",
-            fontSize: "12px",
-            fontWeight: 600,
-          }}
-        >
-          <Users size={14} />
-          {agentDashboardOpen && <span>Agents</span>}
-        </button>
-
-        {/* AI toggle */}
+        {/* AI toggle — unified AI + Agent Team */}
         <button
           className="icon-btn"
           onClick={onToggleAiMode}
-          title={aiMode ? "Disable AI Mode" : "Enable AI Mode"}
+          title={aiMode ? "Close AI" : "Open AI"}
           style={{
             color: aiMode ? "var(--accent)" : "var(--text-muted)",
             background: aiMode ? "var(--accent-muted)" : "transparent",

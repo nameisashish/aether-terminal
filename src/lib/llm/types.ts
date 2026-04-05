@@ -11,15 +11,25 @@ export type LLMProvider = "local" | "groq" | "openai" | "anthropic" | "gemini" |
 /** Available models per provider */
 export const PROVIDER_MODELS: Record<LLMProvider, string[]> = {
   local: [
-    // These are common models — the actual list is auto-detected from Ollama
-    "gemma2:9b",
+    // Lightweight (1-3GB) — works on any machine, even without GPU
+    "llama3.2:1b",
+    "llama3.2:3b",
     "gemma2:2b",
+    "phi3:mini",
+    "qwen2.5-coder:1.5b",
+    // Medium (4-8GB) — needs 8GB+ RAM or a decent GPU
+    "gemma2:9b",
     "llama3.1:8b",
-    "llama3.1:latest",
-    "qwen2.5-coder:latest",
-    "codellama:latest",
+    "gemma4:e2b",
+    "qwen2.5-coder:7b",
+    "codellama:7b",
     "deepseek-coder-v2:latest",
     "mistral:latest",
+    // Heavy (12GB+) — needs GPU with 12GB+ VRAM
+    "gemma2:27b",
+    "llama3.1:70b",
+    "qwen2.5-coder:32b",
+    "codellama:34b",
   ],
   groq: [
     "llama-3.3-70b-versatile",

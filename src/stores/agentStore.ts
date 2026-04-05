@@ -19,10 +19,8 @@ interface AgentState {
   // ── State ──
   currentTask: AgentTaskState | null;
   taskHistory: AgentTaskState[];
-  dashboardOpen: boolean;
 
   // ── Actions ──
-  setDashboardOpen: (open: boolean) => void;
   startTask: (query: string) => Promise<void>;
   addStep: (step: AgentStep) => void;
   resolveApproval: (id: string, decision: ApprovalDecision) => void;
@@ -38,9 +36,6 @@ const approvalCallbacks = new Map<
 export const useAgentStore = create<AgentState>((set) => ({
   currentTask: null,
   taskHistory: [],
-  dashboardOpen: false,
-
-  setDashboardOpen: (open) => set({ dashboardOpen: open }),
 
   addStep: (step) =>
     set((s) => {
@@ -125,7 +120,6 @@ export const useAgentStore = create<AgentState>((set) => ({
         isRunning: true,
         startTime: Date.now(),
       },
-      dashboardOpen: true,
     });
 
     try {

@@ -13,20 +13,17 @@ import { StatusBar } from "./StatusBar";
 import { TerminalTabs } from "../terminal/TerminalTabs";
 import { Terminal } from "../terminal/Terminal";
 import { AiChatPanel } from "../ai/AiChatPanel";
-import { AgentDashboard } from "../agents/AgentDashboard";
 import { FileExplorer } from "../explorer/FileExplorer";
 import { FileViewer } from "../explorer/FileViewer";
 import { SettingsPanel } from "../settings/SettingsPanel";
 import { useTerminalStore, createTab } from "../../stores/terminalStore";
 import { useAiStore } from "../../stores/aiStore";
-import { useAgentStore } from "../../stores/agentStore";
 import { useFileStore } from "../../stores/fileStore";
 import { useWorkspaceStore } from "../../stores/workspaceStore";
 
 export function MainLayout() {
   const { tabs, activeTabId, addTab } = useTerminalStore();
   const { aiMode, toggleAiMode, chatPanelOpen, initializeStore } = useAiStore();
-  const { dashboardOpen, setDashboardOpen } = useAgentStore();
   const { explorerOpen, setExplorerOpen } = useFileStore();
   const { openFilePath } = useWorkspaceStore();
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -62,8 +59,6 @@ export function MainLayout() {
         aiMode={aiMode}
         onToggleAiMode={toggleAiMode}
         onOpenSettings={() => setSettingsOpen(true)}
-        onToggleAgents={() => setDashboardOpen(!dashboardOpen)}
-        agentDashboardOpen={dashboardOpen}
         onToggleExplorer={() => setExplorerOpen(!explorerOpen)}
         explorerOpen={explorerOpen}
       />
@@ -128,11 +123,8 @@ export function MainLayout() {
           </div>
         </div>
 
-        {/* AI Chat Panel (right side) */}
+        {/* AI Chat Panel (right side) — unified AI + Agent Team */}
         {chatPanelOpen && <AiChatPanel />}
-
-        {/* Agent Dashboard (right side) */}
-        {dashboardOpen && <AgentDashboard />}
       </div>
 
       {/* Status Bar */}

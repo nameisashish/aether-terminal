@@ -1,14 +1,15 @@
 // ==========================================
 // AI Store (Zustand)
-// Manages AI state: API keys, LLM config,
-// chat history, AI mode, and streaming state.
+// Unified AI + Agent system. The AI handles
+// direct tool calls for simple tasks and
+// delegates complex tasks to the 8-agent team
+// automatically via smart routing.
 //
-// KEY UPGRADE: AI now has tool-calling capability
-// and full codebase access. It can read/write
-// files, run commands, and delegate to agents.
-//
-// PERSISTENCE: API keys and config are saved to
-// localStorage so they survive app restarts.
+// KEY FEATURES:
+// - Direct tool-calling (read/write/run)
+// - Smart delegation to 8-agent specialist team
+// - Inline agent progress & approval UI
+// - Persistence to localStorage
 // ==========================================
 
 import { create } from "zustand";
@@ -17,12 +18,16 @@ import { DEFAULT_LLM_CONFIG, GROQ_FALLBACK_CONFIG } from "../lib/llm/types";
 import { streamChat, testOllamaConnection, getOllamaModels } from "../lib/llm/providers";
 import { createChatModel } from "../lib/llm/providers";
 import { createAgentTools } from "../lib/agents/tools";
+import { tool } from "@langchain/core/tools";
+import { z } from "zod";
 import {
   HumanMessage,
   SystemMessage,
   ToolMessage,
 } from "@langchain/core/messages";
 import type { BaseMessage } from "@langchain/core/messages";
+import type { AgentStep, PendingApproval, ApprovalDecision } from "../lib/agents/types";
+import { runAgentWorkflow } from "../lib/agents/graph";
 
 // ── Persistence helpers ──
 const STORAGE_KEYS = {
@@ -47,6 +52,9 @@ function saveToStorage(key: string, value: unknown): void {
   }
 }
 
+// ── Approval callback storage for inline agent approvals ──
+const aiApprovalCallbacks = new Map<string, (approved: boolean) => void>();
+
 interface AiState {
   // ── State ──
   aiMode: boolean;
@@ -56,8 +64,9 @@ interface AiState {
   isStreaming: boolean;
   chatPanelOpen: boolean;
   error: string | null;
-  useAgentMode: boolean; // When ON, complex tasks auto-route to agents
-  toolActivity: string[];  // Live tool activity log
+  toolActivity: string[];
+  agentSteps: AgentStep[];        // Inline agent team progress
+  pendingApprovals: PendingApproval[]; // Inline approval requests
 
   // ── Actions ──
   toggleAiMode: () => void;
@@ -69,10 +78,11 @@ interface AiState {
   sendMessage: (content: string, workspacePath?: string | null, fileContext?: string) => Promise<void>;
   clearMessages: () => void;
   clearError: () => void;
-  setUseAgentMode: (mode: boolean) => void;
   addToolActivity: (activity: string) => void;
   clearToolActivity: () => void;
-  initializeStore: () => Promise<void>; // Hydrate from localStorage + auto-detect Ollama models
+  resolveApproval: (id: string, decision: ApprovalDecision) => void;
+  clearAgentSteps: () => void;
+  initializeStore: () => Promise<void>;
 }
 
 let messageCounter = 0;
@@ -81,9 +91,8 @@ function createMessageId(): string {
 }
 
 /**
- * System prompt — AI with full codebase access.
- * This is NOT a simple chatbot. It can read files,
- * write files, run commands, and interact with the workspace.
+ * System prompt — unified AI with direct tools + agent delegation.
+ * Smart routing: simple tasks handled directly, complex tasks delegated.
  */
 function buildSystemPrompt(workspacePath?: string | null, fileContext?: string): string {
   let prompt = `You are Aether, an AI coding assistant embedded in a professional terminal application. You have FULL ACCESS to the user's codebase and can perform real actions.
@@ -95,11 +104,42 @@ YOUR CAPABILITIES:
 - Run shell commands (build, test, lint, git) using run_command (requires user approval)
 - List directory contents using list_directory
 - Search across files using search_files
+- Delegate complex tasks to an 8-agent specialist team using delegate_to_agents
+
+SMART ROUTING — choose the right approach:
+
+DIRECT MODE (default): For questions, exploration, and simple changes.
+Use your tools (read_file, write_file, patch_file, run_command, list_directory, search_files) directly.
+
+DELEGATION MODE: For complex, multi-step tasks requiring specialized expertise.
+Use delegate_to_agents to dispatch to the 8-agent team:
+  Architect → system design & planning
+  Coder → implementation & code changes
+  Reviewer → code quality review
+  Tester → test writing & validation
+  QA → quality assurance & edge cases
+  Documenter → documentation
+  Deployer → build & deployment
+
+WHEN TO DELEGATE:
+- Feature implementation spanning multiple files
+- Tasks needing code review or testing
+- Refactoring or architecture changes
+- When the user explicitly asks for "agent team" or "agents"
+- Bug fixes requiring analysis + fix + tests + review
+
+WHEN TO HANDLE DIRECTLY:
+- Answering questions about code
+- Reading/exploring files
+- Simple single-file edits
+- Running commands
+- Quick explanations
 
 WORKFLOW — for ANY question about the codebase:
 1. FIRST use list_directory and read_file to explore the actual project
 2. THEN answer based on what you found — never guess or say "I don't have access"
 3. When making changes, use write_file or patch_file and the user will approve
+4. For complex multi-step tasks, use delegate_to_agents
 
 YOUR COMMUNICATION STYLE:
 - Be precise and technical — explain non-obvious concepts briefly
@@ -113,7 +153,7 @@ RULES:
 - You ALWAYS have access to the codebase. Never say "I can't access files" or "I'm just a chatbot"
 - When asked about the project, EXPLORE IT using your tools before answering
 - When asked to create or modify files, USE YOUR TOOLS — don't just show code snippets
-- For complex multi-step tasks, break them down and execute each step with tools`;
+- For complex multi-step tasks, use delegate_to_agents — don't try to do everything yourself`;
 
   if (workspacePath) {
     prompt += `\n\nCURRENT WORKSPACE: ${workspacePath}
@@ -135,8 +175,9 @@ export const useAiStore = create<AiState>((set, get) => ({
   isStreaming: false,
   chatPanelOpen: false,
   error: null,
-  useAgentMode: false,
   toolActivity: [],
+  agentSteps: [],
+  pendingApprovals: [],
 
   toggleAiMode: () =>
     set((s) => ({ aiMode: !s.aiMode, chatPanelOpen: !s.aiMode ? true : s.chatPanelOpen })),
@@ -167,12 +208,23 @@ export const useAiStore = create<AiState>((set, get) => ({
     set({ apiKeys: keys });
   },
 
-  setUseAgentMode: (mode) => set({ useAgentMode: mode }),
-
   addToolActivity: (activity) =>
     set((s) => ({ toolActivity: [...s.toolActivity.slice(-50), activity] })),
 
   clearToolActivity: () => set({ toolActivity: [] }),
+
+  resolveApproval: (id, decision) => {
+    const callback = aiApprovalCallbacks.get(id);
+    if (callback) {
+      callback(decision === "approve");
+      aiApprovalCallbacks.delete(id);
+    }
+    set((s) => ({
+      pendingApprovals: s.pendingApprovals.filter((a) => a.id !== id),
+    }));
+  },
+
+  clearAgentSteps: () => set({ agentSteps: [], pendingApprovals: [] }),
 
   /**
    * Initialize: hydrate from localStorage, then auto-detect
@@ -181,13 +233,11 @@ export const useAiStore = create<AiState>((set, get) => ({
   initializeStore: async () => {
     const { config } = get();
 
-    // If using local provider, verify the configured model actually exists
     if (config.provider === "local") {
       const ollamaOnline = await testOllamaConnection();
       if (ollamaOnline) {
         const models = await getOllamaModels();
         if (models.length > 0 && !models.includes(config.model)) {
-          // Prefer lightweight models that work well on CPU
           const preferred = ["llama3.2:3b", "llama3.2:1b", "gemma2:2b", "phi3:mini", "qwen2.5-coder:latest"];
           const bestModel = preferred.find((m) => models.includes(m)) || models[0];
           const newConfig = { ...config, model: bestModel };
@@ -196,7 +246,6 @@ export const useAiStore = create<AiState>((set, get) => ({
           console.log(`[Aether] Auto-selected Ollama model: ${bestModel}`);
         }
       } else {
-        // Ollama is offline — if we have a Groq key, auto-switch
         const { apiKeys } = get();
         if (apiKeys.groq) {
           const newConfig = { ...GROQ_FALLBACK_CONFIG };
@@ -217,7 +266,6 @@ export const useAiStore = create<AiState>((set, get) => ({
       try {
         const models = await getOllamaModels();
         if (models.length > 0 && !models.includes(config.model)) {
-          // Prefer lightweight models that work well on CPU
           const preferred = ["llama3.2:3b", "llama3.2:1b", "gemma2:2b", "phi3:mini", "qwen2.5-coder:latest"];
           const bestModel = preferred.find((m) => models.includes(m)) || models[0];
           config = { ...config, model: bestModel };
@@ -225,7 +273,6 @@ export const useAiStore = create<AiState>((set, get) => ({
           set({ config });
           console.log(`[Aether] Auto-fixed model to: ${bestModel}`);
         } else if (models.length === 0) {
-          // Ollama has no models — check for cloud fallback
           if (apiKeys.groq) {
             config = { ...GROQ_FALLBACK_CONFIG };
             saveToStorage(STORAGE_KEYS.CONFIG, config);
@@ -236,7 +283,6 @@ export const useAiStore = create<AiState>((set, get) => ({
           }
         }
       } catch {
-        // Ollama unreachable — try Groq fallback
         if (apiKeys.groq) {
           config = { ...GROQ_FALLBACK_CONFIG };
           saveToStorage(STORAGE_KEYS.CONFIG, config);
@@ -280,6 +326,7 @@ export const useAiStore = create<AiState>((set, get) => ({
       isStreaming: true,
       error: null,
       toolActivity: [],
+      agentSteps: [],
     });
 
     try {
@@ -307,18 +354,15 @@ export const useAiStore = create<AiState>((set, get) => ({
         }
       }
 
-      // Build the model and tools
+      // Build the model
       const model = createChatModel(activeConfig, apiKeys);
 
-      // Create tools for the AI — same tools agents use
-      const tools = createAgentTools("supervisor" as any, async (_approval) => {
-        // For AI chat, auto-approve reads, prompt for writes
-        // In the future, this will show an approval dialog
-        // For now, auto-approve all (tools will show in activity)
+      // Create direct tools for the AI (read/write/run/search)
+      const directTools = createAgentTools("supervisor" as any, async (_approval) => {
+        // Auto-approve for direct AI tool calls
         return true;
       }, (output) => {
         get().addToolActivity(output);
-        // Append tool activity to the streaming message
         set((s) => ({
           messages: s.messages.map((m) =>
             m.id === assistantMessage.id
@@ -328,11 +372,82 @@ export const useAiStore = create<AiState>((set, get) => ({
         }));
       });
 
+      // Create the delegate_to_agents tool for smart routing to 8-agent team
+      const delegateTool = tool(
+        async ({ task }: { task: string }) => {
+          get().addToolActivity("🤖 Delegating to agent team...");
+
+          set((s) => ({
+            messages: s.messages.map((m) =>
+              m.id === assistantMessage.id
+                ? { ...m, content: m.content + "\n\n> 🤖 **Delegating to 8-agent specialist team...**\n" }
+                : m
+            ),
+          }));
+
+          try {
+            const result = await runAgentWorkflow(
+              task,
+              activeConfig,
+              apiKeys,
+              // Step callback — streams agent progress into inline UI
+              (step) => {
+                set((s) => {
+                  const existingIdx = s.agentSteps.findIndex((st) => st.id === step.id);
+                  const newSteps = existingIdx >= 0
+                    ? s.agentSteps.map((st, i) => (i === existingIdx ? step : st))
+                    : [...s.agentSteps, step];
+                  return { agentSteps: newSteps };
+                });
+                get().addToolActivity(`${step.action}`);
+              },
+              // Approval callback — shows inline approval UI in chat
+              (approval) => {
+                return new Promise<boolean>((resolve) => {
+                  aiApprovalCallbacks.set(approval.id, resolve);
+                  set((s) => ({
+                    pendingApprovals: [...s.pendingApprovals, approval],
+                  }));
+                });
+              },
+              workspacePath,
+              fileContext
+            );
+
+            set((s) => ({
+              messages: s.messages.map((m) =>
+                m.id === assistantMessage.id
+                  ? { ...m, content: m.content + "\n> ✅ **Agent team completed task**\n" }
+                  : m
+              ),
+            }));
+
+            return result;
+          } catch (err) {
+            const error = err instanceof Error ? err.message : String(err);
+            return `Agent team error: ${error}`;
+          }
+        },
+        {
+          name: "delegate_to_agents",
+          description:
+            "Delegate a complex task to the specialized 8-agent team (Architect, Coder, Reviewer, Tester, QA, Documenter, Deployer). Use for multi-file implementations, tasks needing review/testing, refactoring, or significant code changes. The agents will explore the codebase, make changes with approval, and return comprehensive results.",
+          schema: z.object({
+            task: z.string().describe("Clear, specific task description for the agent team to execute"),
+          }),
+        }
+      );
+
+      // Combine direct tools + delegation tool
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const allTools = [...directTools, delegateTool] as any[];
+
       // Try to bind tools to model
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let modelWithTools: any = model;
       try {
-        const bound = (model as any).bindTools?.(tools);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const bound = (model as any).bindTools?.(allTools);
         modelWithTools = bound || model;
       } catch {
         // Model doesn't support tools — fall back to simple streaming
@@ -351,7 +466,6 @@ export const useAiStore = create<AiState>((set, get) => ({
           if (msg.role === "user") {
             langChainMessages.push(new HumanMessage(msg.content));
           } else if (msg.role === "assistant" && !msg.isStreaming) {
-            // Use dynamic import for AIMessage to avoid circular deps
             const { AIMessage } = await import("@langchain/core/messages");
             langChainMessages.push(new AIMessage(msg.content));
           }
@@ -359,7 +473,7 @@ export const useAiStore = create<AiState>((set, get) => ({
         langChainMessages.push(new HumanMessage(content));
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const toolMap = new Map<string, any>(tools.map((t) => [t.name, t]));
+        const toolMap = new Map<string, any>(allTools.map((t: any) => [t.name, t]));
         let currentMessages = [...langChainMessages];
         let iterations = 0;
         const MAX_ITERATIONS = 10;
@@ -403,6 +517,7 @@ export const useAiStore = create<AiState>((set, get) => ({
             }
 
             try {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
               const toolResult = await (toolFn as any).invoke(toolCall.args);
               currentMessages.push(
                 new ToolMessage({
@@ -478,7 +593,7 @@ export const useAiStore = create<AiState>((set, get) => ({
     }
   },
 
-  clearMessages: () => set({ messages: [], toolActivity: [] }),
+  clearMessages: () => set({ messages: [], toolActivity: [], agentSteps: [], pendingApprovals: [] }),
 
   clearError: () => set({ error: null }),
 }));

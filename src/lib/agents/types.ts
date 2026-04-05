@@ -107,6 +107,11 @@ export interface PendingApproval {
   detail: string; // Full command or file content
   type: "shell_command" | "file_write" | "file_delete" | "destructive";
   timestamp: number;
+  diffData?: {
+    originalContent: string;
+    newContent: string;
+    filePath: string;
+  };
 }
 
 /** Possible approval decisions */

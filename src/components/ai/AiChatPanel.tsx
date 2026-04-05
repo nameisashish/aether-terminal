@@ -1,11 +1,12 @@
 // ==========================================
-// AI Chat Panel Component — Full Integration
-// Side panel for AI chat with:
-// - Full codebase access (reads/writes files)
-// - Agent team toggle for complex tasks
-// - File context from explorer selections
+// AI Chat Panel — Unified Interface
+// Single panel for AI chat with:
+// - Direct tool-calling (read/write/run)
+// - Smart delegation to 8-agent team
+// - Inline agent progress display
+// - Inline approval UI
+// - File context from explorer
 // - Workspace-aware prompts
-// - Tool activity display
 // ==========================================
 
 import { useState, useRef, useEffect, useCallback } from "react";
@@ -20,12 +21,14 @@ import {
   Sparkles,
   Users,
   FileCode,
+  CheckCircle,
+  XCircle,
 } from "lucide-react";
 import { useAiStore } from "../../stores/aiStore";
-import { useAgentStore } from "../../stores/agentStore";
 import { useWorkspaceStore } from "../../stores/workspaceStore";
 import { useFileStore } from "../../stores/fileStore";
 import { PROVIDER_INFO } from "../../lib/llm/types";
+import { AGENTS } from "../../lib/agents/types";
 import { Markdown } from "./Markdown";
 
 /** Quick-start prompt suggestions */
@@ -48,12 +51,12 @@ export function AiChatPanel() {
     clearMessages,
     clearError,
     apiKeys,
-    useAgentMode,
-    setUseAgentMode,
     toolActivity,
+    agentSteps,
+    pendingApprovals,
+    resolveApproval,
   } = useAiStore();
 
-  const { startTask, setDashboardOpen } = useAgentStore();
   const { workspacePath } = useWorkspaceStore();
   const { selectedFiles } = useFileStore();
 
@@ -64,7 +67,7 @@ export function AiChatPanel() {
   // Auto-scroll to bottom on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, toolActivity]);
+  }, [messages, toolActivity, agentSteps, pendingApprovals]);
 
   // Focus input when panel opens
   useEffect(() => {
@@ -112,16 +115,9 @@ export function AiChatPanel() {
     if (!trimmed || isStreaming) return;
     setInput("");
 
-    if (useAgentMode) {
-      // Route to agent system
-      setDashboardOpen(true);
-      startTask(trimmed);
-    } else {
-      // Route to AI chat with tools
-      const fileContext = await buildFileContext();
-      await sendMessage(trimmed, workspacePath, fileContext);
-    }
-  }, [input, isStreaming, useAgentMode, workspacePath, buildFileContext, sendMessage, startTask, setDashboardOpen]);
+    const fileContext = await buildFileContext();
+    await sendMessage(trimmed, workspacePath, fileContext);
+  }, [input, isStreaming, workspacePath, buildFileContext, sendMessage]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -190,62 +186,6 @@ export function AiChatPanel() {
           </div>
         </div>
 
-        {/* Mode toggle bar */}
-        <div
-          style={{
-            display: "flex",
-            gap: "2px",
-            padding: "6px 12px",
-            borderBottom: "1px solid var(--border-subtle)",
-            flexShrink: 0,
-          }}
-        >
-          <button
-            onClick={() => setUseAgentMode(false)}
-            style={{
-              flex: 1,
-              padding: "5px 10px",
-              borderRadius: "6px",
-              fontSize: "11px",
-              fontWeight: 600,
-              cursor: "pointer",
-              border: "none",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: "4px",
-              background: !useAgentMode ? "var(--accent-muted)" : "transparent",
-              color: !useAgentMode ? "var(--accent)" : "var(--text-muted)",
-              transition: "all 0.15s",
-            }}
-          >
-            <Sparkles size={11} />
-            AI Chat
-          </button>
-          <button
-            onClick={() => setUseAgentMode(true)}
-            style={{
-              flex: 1,
-              padding: "5px 10px",
-              borderRadius: "6px",
-              fontSize: "11px",
-              fontWeight: 600,
-              cursor: "pointer",
-              border: "none",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: "4px",
-              background: useAgentMode ? "var(--accent-muted)" : "transparent",
-              color: useAgentMode ? "var(--accent)" : "var(--text-muted)",
-              transition: "all 0.15s",
-            }}
-          >
-            <Users size={11} />
-            Agent Team
-          </button>
-        </div>
-
         {/* Workspace context bar */}
         {workspacePath && (
           <div
@@ -263,7 +203,7 @@ export function AiChatPanel() {
           >
             <FileCode size={10} style={{ color: "var(--accent)" }} />
             <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {workspacePath.split("/").pop()} — AI has codebase access
+              {workspacePath.split("/").pop()} — AI + Agent Team
             </span>
             {selectedFiles.size > 0 && (
               <span style={{ color: "var(--accent)", fontWeight: 600 }}>
@@ -315,14 +255,10 @@ export function AiChatPanel() {
             >
               <Sparkles size={28} strokeWidth={1.5} style={{ opacity: 0.3, color: "var(--accent)" }} />
               <span style={{ fontSize: "13px", color: "var(--text-muted)", textAlign: "center" }}>
-                {useAgentMode
-                  ? "Describe a task for the 8-agent team"
-                  : "Ask me anything about your code"}
+                Ask me anything about your code
               </span>
               <span style={{ fontSize: "11px", color: "var(--text-muted)", opacity: 0.6, textAlign: "center" }}>
-                {useAgentMode
-                  ? "Agents will read your code, make changes, and ask for approval"
-                  : "I can read files, write code, and run commands in your project"}
+                I can read files, write code, run commands, and delegate to specialist agents
               </span>
 
               {/* Quick prompts */}
@@ -454,7 +390,7 @@ export function AiChatPanel() {
             </div>
           ))}
 
-          {/* Tool Activity Feed - shows what AI is doing in real-time */}
+          {/* Tool Activity Feed — shows what AI is doing in real-time */}
           {isStreaming && toolActivity.length > 0 && (
             <div
               style={{
@@ -496,6 +432,172 @@ export function AiChatPanel() {
             </div>
           )}
 
+          {/* Inline Agent Team Activity */}
+          {agentSteps.length > 0 && (
+            <div
+              style={{
+                margin: "4px 0",
+                padding: "10px 12px",
+                borderRadius: "8px",
+                background: "rgba(124, 92, 252, 0.06)",
+                border: "1px solid rgba(124, 92, 252, 0.15)",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  color: "var(--accent)",
+                  marginBottom: "6px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                }}
+              >
+                <Users size={12} />
+                Agent Team Activity
+              </div>
+              {agentSteps.slice(-10).map((step) => (
+                <div
+                  key={step.id}
+                  style={{
+                    fontSize: "11px",
+                    color: "var(--text-secondary)",
+                    padding: "2px 0",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                  }}
+                >
+                  <span style={{ fontSize: "12px", flexShrink: 0 }}>
+                    {AGENTS[step.agentRole]?.icon || "🔧"}
+                  </span>
+                  <span
+                    style={{
+                      flex: 1,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {step.action}
+                  </span>
+                  {(step.status === "working" || step.status === "thinking") && (
+                    <Loader2
+                      size={10}
+                      className="animate-spin"
+                      style={{ color: "var(--accent)", flexShrink: 0 }}
+                    />
+                  )}
+                  {step.status === "done" && (
+                    <CheckCircle size={10} style={{ color: "var(--green)", flexShrink: 0 }} />
+                  )}
+                  {step.status === "error" && (
+                    <XCircle size={10} style={{ color: "var(--red)", flexShrink: 0 }} />
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Pending Approvals — inline approve/reject UI */}
+          {pendingApprovals.map((approval) => (
+            <div
+              key={approval.id}
+              style={{
+                margin: "4px 0",
+                padding: "10px 12px",
+                borderRadius: "8px",
+                background: "rgba(251, 191, 36, 0.06)",
+                border: "1px solid rgba(251, 191, 36, 0.2)",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  color: "#fbbf24",
+                  marginBottom: "4px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                }}
+              >
+                <span style={{ fontSize: "12px" }}>
+                  {AGENTS[approval.agentRole]?.icon || "⚠️"}
+                </span>
+                Approval Required — {AGENTS[approval.agentRole]?.name || "Agent"}
+              </div>
+              <div
+                style={{
+                  fontSize: "12px",
+                  color: "var(--text-primary)",
+                  marginBottom: "4px",
+                }}
+              >
+                {approval.action}
+              </div>
+              <pre
+                style={{
+                  fontSize: "11px",
+                  color: "var(--text-secondary)",
+                  fontFamily: "var(--font-mono)",
+                  background: "var(--bg-tertiary)",
+                  padding: "6px 8px",
+                  borderRadius: "4px",
+                  maxHeight: "120px",
+                  overflow: "auto",
+                  margin: "4px 0 8px",
+                  whiteSpace: "pre-wrap",
+                  wordBreak: "break-all",
+                }}
+              >
+                {approval.detail.slice(0, 500)}
+                {approval.detail.length > 500 && "..."}
+              </pre>
+              <div style={{ display: "flex", gap: "6px" }}>
+                <button
+                  onClick={() => resolveApproval(approval.id, "approve")}
+                  style={{
+                    padding: "4px 12px",
+                    borderRadius: "6px",
+                    border: "none",
+                    background: "var(--green, #4ade80)",
+                    color: "#fff",
+                    fontSize: "11px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "4px",
+                  }}
+                >
+                  <CheckCircle size={11} />
+                  Approve
+                </button>
+                <button
+                  onClick={() => resolveApproval(approval.id, "reject")}
+                  style={{
+                    padding: "4px 12px",
+                    borderRadius: "6px",
+                    border: "1px solid var(--red, #f87171)",
+                    background: "transparent",
+                    color: "var(--red, #f87171)",
+                    fontSize: "11px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "4px",
+                  }}
+                >
+                  <XCircle size={11} />
+                  Reject
+                </button>
+              </div>
+            </div>
+          ))}
+
           {/* Error display */}
           {error && (
             <div
@@ -532,11 +634,7 @@ export function AiChatPanel() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={
-                useAgentMode
-                  ? "Describe a task for the agents..."
-                  : "Ask about your code..."
-              }
+              placeholder="Ask about your code, or describe a task..."
               disabled={isStreaming}
               rows={1}
               style={{
@@ -592,9 +690,7 @@ export function AiChatPanel() {
             }}
           >
             <span>Shift+Enter for newline</span>
-            <span>
-              {useAgentMode ? "🤖 Agent mode" : "💬 AI + Tools"}
-            </span>
+            <span>⚡ AI + Agent Team</span>
           </div>
         </div>
       </motion.div>

@@ -49,11 +49,11 @@ function getToolIcon(action: string) {
 export function AgentDashboard() {
   const {
     currentTask,
-    dashboardOpen,
-    setDashboardOpen,
     startTask,
     cancelTask,
   } = useAgentStore();
+  const dashboardOpen = true; // Legacy — component kept for compatibility
+  const setDashboardOpen = (_open: boolean) => {};
 
   const { workspacePath } = useWorkspaceStore();
   const [input, setInput] = useState("");
