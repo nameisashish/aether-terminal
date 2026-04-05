@@ -49,6 +49,21 @@ export function usePty({ tabId, terminal, rows, cols }: UsePtyOptions) {
   const { setWorkspacePath } = useWorkspaceStore();
   const { loadDirectory, explorerOpen } = useFileStore();
   const lastCwdRef = useRef<string | null>(null);
+  const cwdDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── Apply detected CWD (debounced to avoid races) ──
+  const applyCwd = useCallback((detectedPath: string) => {
+    if (detectedPath === lastCwdRef.current) return;
+    lastCwdRef.current = detectedPath;
+
+    if (cwdDebounceRef.current) clearTimeout(cwdDebounceRef.current);
+    cwdDebounceRef.current = setTimeout(() => {
+      setWorkspacePath(detectedPath);
+      if (explorerOpen) {
+        loadDirectory(detectedPath);
+      }
+    }, 300);
+  }, [setWorkspacePath, loadDirectory, explorerOpen]);
 
   // ── Detect CWD from terminal output ──
   const detectCwd = useCallback((data: string) => {
@@ -57,13 +72,7 @@ export function usePty({ tabId, terminal, rows, cols }: UsePtyOptions) {
     const osc7Match = data.match(/\x1b\]7;file:\/\/[^/]*([^\x07\x1b]+)/);
     if (osc7Match) {
       const detectedPath = decodeURIComponent(osc7Match[1]);
-      if (detectedPath !== lastCwdRef.current) {
-        lastCwdRef.current = detectedPath;
-        setWorkspacePath(detectedPath);
-        if (explorerOpen) {
-          loadDirectory(detectedPath);
-        }
-      }
+      applyCwd(detectedPath);
       return;
     }
 
@@ -77,18 +86,12 @@ export function usePty({ tabId, terminal, rows, cols }: UsePtyOptions) {
     for (const pattern of promptPatterns) {
       const match = data.match(pattern);
       if (match) {
-        let detectedPath = match[1].trim();
-        // Expand ~ to home dir
+        const detectedPath = match[1].trim();
         if (detectedPath.startsWith("~")) {
-          // We'll try to resolve ~ later
           break;
         }
-        if (detectedPath !== lastCwdRef.current && detectedPath.startsWith("/")) {
-          lastCwdRef.current = detectedPath;
-          setWorkspacePath(detectedPath);
-          if (explorerOpen) {
-            loadDirectory(detectedPath);
-          }
+        if (detectedPath.startsWith("/")) {
+          applyCwd(detectedPath);
         }
         break;
       }
@@ -200,6 +203,11 @@ export function usePty({ tabId, terminal, rows, cols }: UsePtyOptions) {
   // ── Destroy PTY ──
   const destroyPty = useCallback(async () => {
     destroyedRef.current = true;
+
+    if (cwdDebounceRef.current) {
+      clearTimeout(cwdDebounceRef.current);
+      cwdDebounceRef.current = null;
+    }
 
     if (onDataDisposableRef.current) {
       onDataDisposableRef.current.dispose();

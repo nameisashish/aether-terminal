@@ -153,24 +153,28 @@ export function FileExplorer() {
 
   // ── Listen to Native Menu Events ──
   useEffect(() => {
-    const unlistenNewFile = listen("menu-new-file", () => {
-      setExplorerOpen(true);
-      setShowNewInput("file");
-    });
-    
-    const unlistenNewFolder = listen("menu-new-folder", () => {
-      setExplorerOpen(true);
-      setShowNewInput("folder");
-    });
-    
-    const unlistenOpenFolder = listen("menu-open-folder", () => {
-      handleOpenFolder();
-    });
+    let unlistenNewFile: (() => void) | null = null;
+    let unlistenNewFolder: (() => void) | null = null;
+    let unlistenOpenFolder: (() => void) | null = null;
+
+    (async () => {
+      unlistenNewFile = await listen("menu-new-file", () => {
+        setExplorerOpen(true);
+        setShowNewInput("file");
+      });
+      unlistenNewFolder = await listen("menu-new-folder", () => {
+        setExplorerOpen(true);
+        setShowNewInput("folder");
+      });
+      unlistenOpenFolder = await listen("menu-open-folder", () => {
+        handleOpenFolder();
+      });
+    })();
 
     return () => {
-      unlistenNewFile.then(fn => fn());
-      unlistenNewFolder.then(fn => fn());
-      unlistenOpenFolder.then(fn => fn());
+      unlistenNewFile?.();
+      unlistenNewFolder?.();
+      unlistenOpenFolder?.();
     };
   }, [setExplorerOpen, handleOpenFolder]);
 
