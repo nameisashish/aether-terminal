@@ -14,6 +14,127 @@ import { type BaseChatModel } from "@langchain/core/language_models/chat_models"
 import { HumanMessage, SystemMessage, AIMessage } from "@langchain/core/messages";
 import type { LLMConfig, LLMProvider, ChatMessage, ApiKeys } from "./types";
 
+// ── Custom Fetch for Ollama ─────────────────────
+// Tauri's WebView (WebKit) has a hardcoded 60-second fetch timeout
+// that cannot be changed from JavaScript. Ollama models on CPU can
+// take longer than 60s for prompt evaluation (especially with tool
+// schemas). This custom fetch uses Tauri's shell plugin to run curl,
+// completely bypassing the WebView's timeout limitation.
+// ─────────────────────────────────────────────────
+
+/**
+ * Creates a fetch-compatible function that uses curl via Tauri's shell
+ * plugin instead of the browser's fetch. This bypasses WebKit's 60s
+ * timeout. Falls back to browser fetch if not in a Tauri context.
+ */
+function createTauriFetch(): typeof fetch {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let _Command: any = null;
+  let _useBrowserFetch = false;
+
+  const tauriFetch = async (
+    input: RequestInfo | URL,
+    init?: RequestInit
+  ): Promise<Response> => {
+    // Fall back to browser fetch if not in Tauri (e.g., dev server)
+    if (_useBrowserFetch) return fetch(input, init);
+
+    // Lazy-load Tauri shell plugin
+    if (!_Command) {
+      try {
+        const mod = await import("@tauri-apps/plugin-shell");
+        _Command = mod.Command;
+      } catch {
+        console.warn("[Aether] Not in Tauri context, using browser fetch");
+        _useBrowserFetch = true;
+        return fetch(input, init);
+      }
+    }
+
+    const url =
+      typeof input === "string"
+        ? input
+        : input instanceof URL
+          ? input.href
+          : (input as Request).url;
+    const method = init?.method || "GET";
+    const body = init?.body ? String(init.body) : "";
+
+    // Build curl command with 5-minute timeout (vs WebKit's 60s)
+    const curlParts = [
+      "curl", "-s", "-S", "-N",
+      "--max-time", "300",
+      "-X", method,
+      "-H", "'Content-Type: application/json'",
+      "-H", "'Accept: application/json'",
+    ].join(" ");
+
+    let shellCmd: string;
+    if (body) {
+      // Base64-encode body to safely pass JSON through shell
+      // (avoids issues with quotes, brackets, special chars)
+      const b64 = btoa(unescape(encodeURIComponent(body)));
+      shellCmd = `printf '%s' '${b64}' | base64 -d | ${curlParts} -d @- '${url}'`;
+    } else {
+      shellCmd = `${curlParts} '${url}'`;
+    }
+
+    const cmd = _Command.create("sh", ["-c", shellCmd]);
+    const encoder = new TextEncoder();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let child: any = null;
+
+    const stream = new ReadableStream<Uint8Array>({
+      start: async (controller) => {
+        cmd.stdout.on("data", (line: string) => {
+          try {
+            controller.enqueue(encoder.encode(line + "\n"));
+          } catch {
+            // Stream already closed
+          }
+        });
+
+        cmd.stderr.on("data", (line: string) => {
+          console.warn("[Aether] curl:", line);
+        });
+
+        cmd.on("close", () => {
+          try {
+            controller.close();
+          } catch {
+            // Already closed
+          }
+        });
+
+        cmd.on("error", (err: string) => {
+          try {
+            controller.error(new Error(err));
+          } catch {
+            // Already closed
+          }
+        });
+
+        child = await cmd.spawn();
+      },
+    });
+
+    // Kill curl process if caller aborts
+    if (init?.signal) {
+      init.signal.addEventListener("abort", () => {
+        child?.kill?.();
+      });
+    }
+
+    return new Response(stream, {
+      status: 200,
+      statusText: "OK",
+      headers: new Headers({ "Content-Type": "application/x-ndjson" }),
+    });
+  };
+
+  return tauriFetch as typeof fetch;
+}
+
 /**
  * Creates a LangChain chat model instance for the given provider + config.
  * Each provider has its own LangChain integration package.
@@ -33,16 +154,15 @@ export function createChatModel(
   switch (config.provider) {
     case "local": {
       // Ollama runs locally — no API key needed
-      // numCtx must be large enough for system prompt + tool schemas + history
-      // 4096 is the minimum for tool-calling mode; 2048 was causing 500 errors
-      // keepAlive keeps the model loaded between requests (faster follow-ups)
+      // Uses custom fetch (curl via Tauri shell) to bypass WebKit's 60s timeout
       const ollamaModel = new ChatOllama({
         model: config.model,
         temperature: config.temperature,
         baseUrl: "http://localhost:11434",
         numCtx: 4096,
         keepAlive: "10m",
-        numPredict: 1024, // Reasonable max response length for faster replies
+        numPredict: 1024,
+        fetch: createTauriFetch(),
       });
       return ollamaModel;
     }
