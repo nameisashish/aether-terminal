@@ -3,6 +3,10 @@
 // Multi-provider LLM client using LangChain.
 // Supports Local/Ollama (default), Groq,
 // OpenAI, Anthropic, Gemini, xAI, OpenRouter.
+//
+// For Ollama: chat requests are routed through
+// a Rust-native proxy (Tauri command) to bypass
+// WebKit's hardcoded 60-second fetch timeout.
 // ==========================================
 
 import { ChatGroq } from "@langchain/groq";
@@ -14,130 +18,13 @@ import { type BaseChatModel } from "@langchain/core/language_models/chat_models"
 import { HumanMessage, SystemMessage, AIMessage } from "@langchain/core/messages";
 import type { LLMConfig, LLMProvider, ChatMessage, ApiKeys } from "./types";
 
-// ── Custom Fetch for Ollama ─────────────────────
-// Tauri's WebView (WebKit) has a hardcoded 60-second fetch timeout
-// that cannot be changed from JavaScript. Ollama models on CPU can
-// take longer than 60s for prompt evaluation (especially with tool
-// schemas). This custom fetch uses Tauri's shell plugin to run curl,
-// completely bypassing the WebView's timeout limitation.
-// ─────────────────────────────────────────────────
-
-/**
- * Creates a fetch-compatible function that uses curl via Tauri's shell
- * plugin instead of the browser's fetch. This bypasses WebKit's 60s
- * timeout. Falls back to browser fetch if not in a Tauri context.
- */
-function createTauriFetch(): typeof fetch {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let _Command: any = null;
-  let _useBrowserFetch = false;
-
-  const tauriFetch = async (
-    input: RequestInfo | URL,
-    init?: RequestInit
-  ): Promise<Response> => {
-    // Fall back to browser fetch if not in Tauri (e.g., dev server)
-    if (_useBrowserFetch) return fetch(input, init);
-
-    // Lazy-load Tauri shell plugin
-    if (!_Command) {
-      try {
-        const mod = await import("@tauri-apps/plugin-shell");
-        _Command = mod.Command;
-      } catch {
-        console.warn("[Aether] Not in Tauri context, using browser fetch");
-        _useBrowserFetch = true;
-        return fetch(input, init);
-      }
-    }
-
-    const url =
-      typeof input === "string"
-        ? input
-        : input instanceof URL
-          ? input.href
-          : (input as Request).url;
-    const method = init?.method || "GET";
-    const body = init?.body ? String(init.body) : "";
-
-    // Build curl command with 5-minute timeout (vs WebKit's 60s)
-    const curlParts = [
-      "curl", "-s", "-S", "-N",
-      "--max-time", "300",
-      "-X", method,
-      "-H", "'Content-Type: application/json'",
-      "-H", "'Accept: application/json'",
-    ].join(" ");
-
-    let shellCmd: string;
-    if (body) {
-      // Base64-encode body to safely pass JSON through shell
-      // (avoids issues with quotes, brackets, special chars)
-      const b64 = btoa(unescape(encodeURIComponent(body)));
-      shellCmd = `printf '%s' '${b64}' | base64 -d | ${curlParts} -d @- '${url}'`;
-    } else {
-      shellCmd = `${curlParts} '${url}'`;
-    }
-
-    const cmd = _Command.create("sh", ["-c", shellCmd]);
-    const encoder = new TextEncoder();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let child: any = null;
-
-    const stream = new ReadableStream<Uint8Array>({
-      start: async (controller) => {
-        cmd.stdout.on("data", (line: string) => {
-          try {
-            controller.enqueue(encoder.encode(line + "\n"));
-          } catch {
-            // Stream already closed
-          }
-        });
-
-        cmd.stderr.on("data", (line: string) => {
-          console.warn("[Aether] curl:", line);
-        });
-
-        cmd.on("close", () => {
-          try {
-            controller.close();
-          } catch {
-            // Already closed
-          }
-        });
-
-        cmd.on("error", (err: string) => {
-          try {
-            controller.error(new Error(err));
-          } catch {
-            // Already closed
-          }
-        });
-
-        child = await cmd.spawn();
-      },
-    });
-
-    // Kill curl process if caller aborts
-    if (init?.signal) {
-      init.signal.addEventListener("abort", () => {
-        child?.kill?.();
-      });
-    }
-
-    return new Response(stream, {
-      status: 200,
-      statusText: "OK",
-      headers: new Headers({ "Content-Type": "application/x-ndjson" }),
-    });
-  };
-
-  return tauriFetch as typeof fetch;
-}
-
 /**
  * Creates a LangChain chat model instance for the given provider + config.
  * Each provider has its own LangChain integration package.
+ *
+ * Note: For the "local" provider, this creates a standard ChatOllama instance
+ * used only for tool-calling attempts. The main streaming path bypasses
+ * LangChain entirely and uses the Rust-native proxy (see streamChat).
  */
 export function createChatModel(
   config: LLMConfig,
@@ -154,7 +41,8 @@ export function createChatModel(
   switch (config.provider) {
     case "local": {
       // Ollama runs locally — no API key needed
-      // Uses custom fetch (curl via Tauri shell) to bypass WebKit's 60s timeout
+      // This instance is used for tool-calling attempts only.
+      // Simple streaming goes through the Rust proxy (streamChat).
       const ollamaModel = new ChatOllama({
         model: config.model,
         temperature: config.temperature,
@@ -162,7 +50,6 @@ export function createChatModel(
         numCtx: 4096,
         keepAlive: "10m",
         numPredict: 1024,
-        fetch: createTauriFetch(),
       });
       return ollamaModel;
     }
@@ -252,9 +139,74 @@ export function toLangChainMessages(messages: ChatMessage[]) {
   });
 }
 
+// ── Rust-native Ollama streaming ─────────────────
+// Makes HTTP requests to Ollama entirely from Rust
+// via a Tauri IPC command. WebKit is never involved,
+// so there is no 60-second timeout limitation.
+// Tokens stream back via Tauri events.
+// ─────────────────────────────────────────────────
+
+/**
+ * Streams an Ollama chat response through the Rust backend.
+ * Completely bypasses WebKit/JavaScript HTTP — the request
+ * is made by reqwest in Rust with a 10-minute timeout.
+ */
+async function streamOllamaViaRust(
+  config: LLMConfig,
+  messages: ChatMessage[],
+  onChunk: (chunk: string) => void,
+  systemPrompt?: string
+): Promise<string> {
+  const { invoke } = await import("@tauri-apps/api/core");
+  const { listen } = await import("@tauri-apps/api/event");
+
+  const sessionId = Math.random().toString(36).slice(2) + Date.now().toString(36);
+
+  // Build Ollama-format messages
+  const ollamaMessages: { role: string; content: string }[] = [];
+  if (systemPrompt) {
+    ollamaMessages.push({ role: "system", content: systemPrompt });
+  }
+  for (const msg of messages) {
+    ollamaMessages.push({ role: msg.role, content: msg.content });
+  }
+
+  // Listen for streaming chunks BEFORE invoking the command
+  let fullResponse = "";
+  const unlistenChunk = await listen<{ content: string }>(
+    `ollama-chunk-${sessionId}`,
+    (event) => {
+      fullResponse += event.payload.content;
+      onChunk(event.payload.content);
+    }
+  );
+
+  try {
+    // Call the Rust command — this blocks until Ollama finishes
+    const result = await invoke<string>("ollama_chat", {
+      sessionId,
+      model: config.model,
+      messages: ollamaMessages,
+      temperature: config.temperature ?? 0.7,
+      numCtx: 4096,
+      numPredict: config.maxTokens ?? 1024,
+    });
+
+    // Use the Rust return value as the authoritative response
+    // (event-based fullResponse may miss the tail in rare cases)
+    return result || fullResponse;
+  } finally {
+    unlistenChunk();
+  }
+}
+
 /**
  * Streams a response from the LLM, calling onChunk for each token.
  * Returns the complete response string.
+ *
+ * For Ollama (local provider): routes through Rust-native proxy
+ * to avoid WebKit's 60-second fetch timeout.
+ * For cloud providers: uses LangChain streaming as normal.
  */
 export async function streamChat(
   config: LLMConfig,
@@ -263,6 +215,12 @@ export async function streamChat(
   onChunk: (chunk: string) => void,
   systemPrompt?: string
 ): Promise<string> {
+  // ── Ollama: use Rust-native proxy ──
+  if (config.provider === "local") {
+    return streamOllamaViaRust(config, messages, onChunk, systemPrompt);
+  }
+
+  // ── Cloud providers: use LangChain ──
   const model = createChatModel(config, apiKeys);
   const langChainMessages = toLangChainMessages(messages);
 

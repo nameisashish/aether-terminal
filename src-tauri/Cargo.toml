@@ -1,6 +1,6 @@
 [package]
 name = "aether-terminal"
-version = "0.3.3"
+version = "0.3.4"
 description = "Aether Terminal — AI-native terminal"
 authors = ["Ashish Kishore"]
 edition = "2021"
@@ -19,6 +19,9 @@ tauri-plugin-fs = "2"
 tauri-plugin-store = "2"
 tauri-plugin-shell = "2"
 tauri-plugin-dialog = "2"
+tauri-plugin-http = "2"
+reqwest = { version = "0.12", features = ["stream", "json"] }
+futures-util = "0.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 portable-pty = "0.9"

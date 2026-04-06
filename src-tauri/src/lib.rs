@@ -4,6 +4,7 @@
 // and manages global state.
 // ==========================================
 
+mod ollama;
 mod pty;
 
 use pty::PtyManager;
@@ -26,6 +27,7 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_http::init())
         // ── Menu Setup ────────────────────────────
         .setup(|app| {
             let app_menu = Submenu::with_items(
@@ -105,6 +107,7 @@ pub fn run() {
             pty::resize_pty,
             pty::destroy_pty,
             pty::get_home_dir,
+            ollama::ollama_chat,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Aether Terminal");
