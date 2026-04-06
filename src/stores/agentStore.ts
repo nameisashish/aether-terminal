@@ -71,6 +71,14 @@ export const useAgentStore = create<AgentState>((set) => ({
   cancelTask: () =>
     set((s) => {
       if (s.currentTask) {
+        // Clean up pending approval callbacks to prevent memory leaks
+        s.currentTask.pendingApprovals.forEach((a) => {
+          const cb = approvalCallbacks.get(a.id);
+          if (cb) {
+            cb(false); // Reject pending approvals
+            approvalCallbacks.delete(a.id);
+          }
+        });
         return {
           currentTask: null,
           taskHistory: [

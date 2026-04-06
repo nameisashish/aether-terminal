@@ -497,6 +497,7 @@ function parseSupervisorPlan(response: string): SupervisorPlan {
   }
 
   if (steps.length === 0) {
+    console.warn("[Aether] Supervisor did not provide structured plan, falling back to coder");
     steps.push({ agent: "coder", task: response });
   }
 
@@ -572,7 +573,12 @@ export async function runAgentWorkflow(
         agent, messages, config, apiKeys, onStep, onApproval
       );
       results[agent] = result;
-      accumulatedContext += `\n\n${AGENTS[agent].name} result:\n${result}`;
+      // Cap accumulated context to prevent token explosion
+      const resultSnippet = result.length > 8000 ? result.slice(0, 8000) + "\n...(truncated)" : result;
+      accumulatedContext += `\n\n${AGENTS[agent].name} result:\n${resultSnippet}`;
+      if (accumulatedContext.length > 50000) {
+        accumulatedContext = accumulatedContext.slice(-30000);
+      }
     } else {
       const promises = group.map(async ({ agent, task }) => {
         const messages: BaseMessage[] = [
@@ -589,7 +595,11 @@ export async function runAgentWorkflow(
       const parallelResults = await Promise.all(promises);
       for (const { agent, result } of parallelResults) {
         results[agent] = result;
-        accumulatedContext += `\n\n${AGENTS[agent].name} result:\n${result}`;
+        const resultSnippet = result.length > 8000 ? result.slice(0, 8000) + "\n...(truncated)" : result;
+        accumulatedContext += `\n\n${AGENTS[agent].name} result:\n${resultSnippet}`;
+      }
+      if (accumulatedContext.length > 50000) {
+        accumulatedContext = accumulatedContext.slice(-30000);
       }
     }
   }

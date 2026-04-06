@@ -5,6 +5,13 @@ export interface DiffLine {
   newLineNumber?: number;
 }
 
+/**
+ * Max line count for LCS diff. Beyond this, the O(m*n) DP table would use
+ * too much memory (e.g. 10k × 10k = 400MB for a number[][] table).
+ * For large files, we fall back to a simple line-by-line comparison.
+ */
+const MAX_DIFF_LINES = 5000;
+
 export function computeDiff(oldContent: string, newContent: string): DiffLine[] {
   if (oldContent === newContent) {
     return oldContent.split("\n").map((line, i) => ({
@@ -19,6 +26,12 @@ export function computeDiff(oldContent: string, newContent: string): DiffLine[] 
   const newLines = newContent === "" ? [] : newContent.split("\n");
   const m = oldLines.length;
   const n = newLines.length;
+
+  // Guard: if either file is too large, fall back to simple line-by-line diff
+  // to prevent O(m*n) memory explosion
+  if (m > MAX_DIFF_LINES || n > MAX_DIFF_LINES) {
+    return computeSimpleDiff(oldLines, newLines);
+  }
 
   // Build LCS table
   const dp: number[][] = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0));
@@ -90,4 +103,44 @@ export function formatDiffStats(diff: DiffLine[]): {
   }
 
   return { additions, deletions, unchanged };
+}
+
+/**
+ * Simple O(m+n) line-by-line diff for large files.
+ * Not as accurate as LCS but won't blow up memory.
+ */
+function computeSimpleDiff(oldLines: string[], newLines: string[]): DiffLine[] {
+  const result: DiffLine[] = [];
+  const maxLen = Math.max(oldLines.length, newLines.length);
+
+  for (let i = 0; i < maxLen; i++) {
+    const oldLine = i < oldLines.length ? oldLines[i] : undefined;
+    const newLine = i < newLines.length ? newLines[i] : undefined;
+
+    if (oldLine === newLine) {
+      result.push({
+        type: "unchanged",
+        content: oldLine!,
+        oldLineNumber: i + 1,
+        newLineNumber: i + 1,
+      });
+    } else {
+      if (oldLine !== undefined) {
+        result.push({
+          type: "removed",
+          content: oldLine,
+          oldLineNumber: i + 1,
+        });
+      }
+      if (newLine !== undefined) {
+        result.push({
+          type: "added",
+          content: newLine,
+          newLineNumber: i + 1,
+        });
+      }
+    }
+  }
+
+  return result;
 }

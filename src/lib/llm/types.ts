@@ -17,11 +17,14 @@ export const PROVIDER_MODELS: Record<LLMProvider, string[]> = {
     "gemma2:2b",
     "phi3:mini",
     "qwen2.5-coder:1.5b",
+    "qwen3:1.7b",
     // Medium (4-8GB) — needs 8GB+ RAM or a decent GPU
     "gemma2:9b",
     "llama3.1:8b",
     "gemma4:e2b",
     "qwen2.5-coder:7b",
+    "qwen3:4b",
+    "qwen3:8b",
     "codellama:7b",
     "deepseek-coder-v2:latest",
     "mistral:latest",
@@ -29,6 +32,7 @@ export const PROVIDER_MODELS: Record<LLMProvider, string[]> = {
     "gemma2:27b",
     "llama3.1:70b",
     "qwen2.5-coder:32b",
+    "qwen3:32b",
     "codellama:34b",
   ],
   groq: [

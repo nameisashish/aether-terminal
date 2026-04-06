@@ -239,7 +239,12 @@ export const useAiStore = create<AiState>((set, get) => ({
       if (ollamaOnline) {
         const models = await getOllamaModels();
         if (models.length > 0 && (config.model === "auto" || !models.includes(config.model))) {
-          const preferred = ["llama3.2:3b", "llama3.2:1b", "gemma2:2b", "phi3:mini", "qwen2.5-coder:latest"];
+          const preferred = [
+            "llama3.2:3b", "llama3.2:1b", "qwen2.5-coder:1.5b",
+            "gemma2:2b", "phi3:mini", "qwen2.5-coder:7b",
+            "qwen3:1.7b", "qwen3:4b", "llama3.1:8b",
+            "mistral:latest", "qwen2.5-coder:latest",
+          ];
           const bestModel = preferred.find((m) => models.includes(m)) || models[0];
           const newConfig = { ...config, model: bestModel };
           saveToStorage(STORAGE_KEYS.CONFIG, newConfig);
@@ -259,6 +264,9 @@ export const useAiStore = create<AiState>((set, get) => ({
   },
 
   sendMessage: async (content: string, workspacePath?: string | null, fileContext?: string) => {
+    // Prevent double-send while streaming
+    if (get().isStreaming) return;
+
     let { config } = get();
     const { apiKeys, messages } = get();
 
@@ -267,7 +275,12 @@ export const useAiStore = create<AiState>((set, get) => ({
       try {
         const models = await getOllamaModels();
         if (models.length > 0 && (config.model === "auto" || !models.includes(config.model))) {
-          const preferred = ["llama3.2:3b", "llama3.2:1b", "gemma2:2b", "phi3:mini", "qwen2.5-coder:latest"];
+          const preferred = [
+            "llama3.2:3b", "llama3.2:1b", "qwen2.5-coder:1.5b",
+            "gemma2:2b", "phi3:mini", "qwen2.5-coder:7b",
+            "qwen3:1.7b", "qwen3:4b", "llama3.1:8b",
+            "mistral:latest", "qwen2.5-coder:latest",
+          ];
           const bestModel = preferred.find((m) => models.includes(m)) || models[0];
           config = { ...config, model: bestModel };
           saveToStorage(STORAGE_KEYS.CONFIG, config);
@@ -283,7 +296,8 @@ export const useAiStore = create<AiState>((set, get) => ({
             return;
           }
         }
-      } catch {
+      } catch (err) {
+        console.warn("[Aether] Ollama model check failed:", err);
         if (apiKeys.groq) {
           config = { ...GROQ_FALLBACK_CONFIG };
           saveToStorage(STORAGE_KEYS.CONFIG, config);
@@ -455,105 +469,21 @@ export const useAiStore = create<AiState>((set, get) => ({
         modelWithTools = null;
       }
 
-      if (modelWithTools) {
-        // ── Agentic mode: tool-calling loop ──
-        const systemPrompt = buildSystemPrompt(workspacePath, fileContext);
-        const langChainMessages: BaseMessage[] = [
-          new SystemMessage(systemPrompt),
-        ];
-
-        // Add conversation history (last 10 messages for context)
-        for (const msg of messages.slice(-10)) {
-          if (msg.role === "user") {
-            langChainMessages.push(new HumanMessage(msg.content));
-          } else if (msg.role === "assistant" && !msg.isStreaming) {
-            langChainMessages.push(new AIMessage(msg.content));
-          }
-        }
-        langChainMessages.push(new HumanMessage(content));
-
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const toolMap = new Map<string, any>(allTools.map((t: any) => [t.name, t]));
-        let currentMessages = [...langChainMessages];
-        let iterations = 0;
-        const MAX_ITERATIONS = 10;
-
-        while (iterations < MAX_ITERATIONS) {
-          iterations++;
-          const response = await modelWithTools.invoke(currentMessages, {
-            timeout: 300000, // 5 min timeout for CPU-bound models
-          });
-          currentMessages.push(response);
-
-          const toolCalls = response.tool_calls;
-          if (!toolCalls || toolCalls.length === 0) {
-            // Final response — update the message
-            const result = typeof response.content === "string"
-              ? response.content
-              : JSON.stringify(response.content);
-
-            set((s) => ({
-              messages: s.messages.map((m) =>
-                m.id === assistantMessage.id
-                  ? { ...m, content: m.content + result, isStreaming: false }
-                  : m
-              ),
-              isStreaming: false,
-            }));
-            return;
-          }
-
-          // Execute tool calls
-          for (const toolCall of toolCalls) {
-            const toolFn = toolMap.get(toolCall.name);
-            if (!toolFn) {
-              currentMessages.push(
-                new ToolMessage({
-                  tool_call_id: toolCall.id || toolCall.name,
-                  content: `Error: Unknown tool "${toolCall.name}"`,
-                })
-              );
-              continue;
-            }
-
-            try {
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              const toolResult = await (toolFn as any).invoke(toolCall.args || {});
-              currentMessages.push(
-                new ToolMessage({
-                  tool_call_id: toolCall.id || toolCall.name,
-                  content: typeof toolResult === "string" ? toolResult : JSON.stringify(toolResult),
-                })
-              );
-            } catch (err) {
-              currentMessages.push(
-                new ToolMessage({
-                  tool_call_id: toolCall.id || toolCall.name,
-                  content: `Tool error: ${err instanceof Error ? err.message : String(err)}`,
-                })
-              );
-            }
-          }
-        }
-
-        // Max iterations — get final response
-        const finalResponse = await model.invoke(currentMessages);
-        const finalContent = typeof finalResponse.content === "string"
-          ? finalResponse.content
-          : JSON.stringify(finalResponse.content);
-
-        set((s) => ({
-          messages: s.messages.map((m) =>
-            m.id === assistantMessage.id
-              ? { ...m, content: m.content + finalContent, isStreaming: false }
-              : m
-          ),
-          isStreaming: false,
-        }));
-      } else {
-        // ── Simple streaming mode (model doesn't support tools) ──
+      // Helper: run simple streaming mode (no tools)
+      const runSimpleStreaming = async (prefix?: string) => {
         const systemPrompt = buildSystemPrompt(workspacePath, fileContext);
         const allMessages = [...messages, userMessage];
+
+        if (prefix) {
+          set((s) => ({
+            messages: s.messages.map((m) =>
+              m.id === assistantMessage.id
+                ? { ...m, content: prefix }
+                : m
+            ),
+          }));
+        }
+
         await streamChat(
           activeConfig,
           apiKeys,
@@ -578,6 +508,114 @@ export const useAiStore = create<AiState>((set, get) => ({
           ),
           isStreaming: false,
         }));
+      };
+
+      if (modelWithTools) {
+        // ── Agentic mode: tool-calling loop ──
+        // Wrapped in try-catch: if tool-calling causes a 500 error (common with
+        // Ollama models that don't fully support function calling), we gracefully
+        // fall back to simple streaming mode instead of showing an error.
+        try {
+          const systemPrompt = buildSystemPrompt(workspacePath, fileContext);
+          const langChainMessages: BaseMessage[] = [
+            new SystemMessage(systemPrompt),
+          ];
+
+          // Add conversation history (last 10 messages for context)
+          for (const msg of messages.slice(-10)) {
+            if (msg.role === "user") {
+              langChainMessages.push(new HumanMessage(msg.content));
+            } else if (msg.role === "assistant" && !msg.isStreaming) {
+              langChainMessages.push(new AIMessage(msg.content));
+            }
+          }
+          langChainMessages.push(new HumanMessage(content));
+
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const toolMap = new Map<string, any>(allTools.map((t: any) => [t.name, t]));
+          let currentMessages = [...langChainMessages];
+          let iterations = 0;
+          const MAX_ITERATIONS = 10;
+
+          while (iterations < MAX_ITERATIONS) {
+            iterations++;
+            const response = await modelWithTools.invoke(currentMessages);
+            currentMessages.push(response);
+
+            const toolCalls = response.tool_calls;
+            if (!toolCalls || toolCalls.length === 0) {
+              // Final response — update the message
+              const result = typeof response.content === "string"
+                ? response.content
+                : JSON.stringify(response.content);
+
+              set((s) => ({
+                messages: s.messages.map((m) =>
+                  m.id === assistantMessage.id
+                    ? { ...m, content: m.content + result, isStreaming: false }
+                    : m
+                ),
+                isStreaming: false,
+              }));
+              return;
+            }
+
+            // Execute tool calls
+            for (const toolCall of toolCalls) {
+              const toolFn = toolMap.get(toolCall.name);
+              if (!toolFn) {
+                currentMessages.push(
+                  new ToolMessage({
+                    tool_call_id: toolCall.id || toolCall.name,
+                    content: `Error: Unknown tool "${toolCall.name}"`,
+                  })
+                );
+                continue;
+              }
+
+              try {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const toolResult = await (toolFn as any).invoke(toolCall.args || {});
+                currentMessages.push(
+                  new ToolMessage({
+                    tool_call_id: toolCall.id || toolCall.name,
+                    content: typeof toolResult === "string" ? toolResult : JSON.stringify(toolResult),
+                  })
+                );
+              } catch (err) {
+                currentMessages.push(
+                  new ToolMessage({
+                    tool_call_id: toolCall.id || toolCall.name,
+                    content: `Tool error: ${err instanceof Error ? err.message : String(err)}`,
+                  })
+                );
+              }
+            }
+          }
+
+          // Max iterations — get final response
+          const finalResponse = await model.invoke(currentMessages);
+          const finalContent = typeof finalResponse.content === "string"
+            ? finalResponse.content
+            : JSON.stringify(finalResponse.content);
+
+          set((s) => ({
+            messages: s.messages.map((m) =>
+              m.id === assistantMessage.id
+                ? { ...m, content: m.content + finalContent, isStreaming: false }
+                : m
+            ),
+            isStreaming: false,
+          }));
+        } catch (toolError) {
+          // Tool-calling mode failed (likely Ollama 500 error or model doesn't support tools)
+          // Gracefully fall back to simple streaming mode
+          console.warn("[Aether] Tool-calling mode failed, falling back to simple streaming:", toolError);
+          await runSimpleStreaming("*[Tool mode unavailable — using direct chat]*\n\n");
+        }
+      } else {
+        // ── Simple streaming mode (model doesn't support tools) ──
+        await runSimpleStreaming();
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Unknown error";

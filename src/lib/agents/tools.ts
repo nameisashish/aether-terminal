@@ -161,6 +161,10 @@ export function createAgentTools(
   const searchFilesTool = tool(
     async ({ pattern, directory, fileExtension }) => {
       try {
+        // Validate inputs — reject newlines and control chars to prevent injection
+        if (/[\n\r\x00]/.test(pattern) || /[\n\r\x00]/.test(directory)) {
+          return "Error: Pattern and directory cannot contain newlines or control characters";
+        }
         const { Command } = await import("@tauri-apps/plugin-shell");
         // Use single-quote shell escaping to prevent injection
         const shellEscape = (s: string) => `'${s.replace(/'/g, "'\\''")}'`;

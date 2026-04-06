@@ -33,16 +33,17 @@ export function createChatModel(
   switch (config.provider) {
     case "local": {
       // Ollama runs locally — no API key needed
-      // Large models on CPU can take 2-5 min for first response
+      // numCtx must be large enough for system prompt + tool schemas + history
+      // 4096 is the minimum for tool-calling mode; 2048 was causing 500 errors
+      // keepAlive keeps the model loaded between requests (faster follow-ups)
       const ollamaModel = new ChatOllama({
         model: config.model,
         temperature: config.temperature,
         baseUrl: "http://localhost:11434",
-        numCtx: 2048,  // Smaller context = faster + less RAM on CPU
+        numCtx: 4096,
+        keepAlive: "10m",
+        numPredict: 1024, // Reasonable max response length for faster replies
       });
-      // Override the default timeout via internal client config
-      // @ts-expect-error – setting timeout on internal caller
-      ollamaModel.timeout = 300000; // 5 minutes
       return ollamaModel;
     }
 
@@ -194,7 +195,8 @@ export async function testApiKey(
     const model = createChatModel(config, { [provider]: apiKey });
     await model.invoke([new HumanMessage("Hi")]);
     return true;
-  } catch {
+  } catch (err) {
+    console.warn(`[Aether] API key test failed for ${provider}:`, err);
     return false;
   }
 }
@@ -206,10 +208,11 @@ export async function testOllamaConnection(): Promise<boolean> {
   try {
     const response = await fetch("http://localhost:11434/api/tags", {
       method: "GET",
-      signal: AbortSignal.timeout(3000),
+      signal: AbortSignal.timeout(5000),
     });
     return response.ok;
-  } catch {
+  } catch (err) {
+    console.warn("[Aether] Ollama connection test failed:", err);
     return false;
   }
 }
@@ -226,7 +229,8 @@ export async function getOllamaModels(): Promise<string[]> {
     if (!response.ok) return [];
     const data = await response.json();
     return (data.models || []).map((m: { name: string }) => m.name);
-  } catch {
+  } catch (err) {
+    console.warn("[Aether] Failed to fetch Ollama models:", err);
     return [];
   }
 }
