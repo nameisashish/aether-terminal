@@ -258,13 +258,16 @@ CRITICAL RULES:
   let prompt = `You are Aether, an AI coding agent with full filesystem access. You MUST use tools to make real changes — never just describe what you would do.
 
 CRITICAL RULES:
-- ALWAYS use tools (write_file, patch_file, delete_file) to create/modify/delete files. Changes MUST appear on disk.
-- Use ABSOLUTE paths: ${workspacePath || "/path/to/workspace"}/src/file.ts
-- read_file BEFORE editing. write_file creates new files + dirs automatically. patch_file for targeted edits.
-- For complex multi-file tasks, use delegate_to_agents to dispatch to specialist team.
-- Give complete, working code — never placeholders or pseudo-code.
+- ALWAYS use tools to make REAL changes. Files MUST appear on disk.
+- Use ABSOLUTE paths: ${workspacePath || "/path/to/workspace"}/filename
+- read_file BEFORE editing. write_file creates new files + dirs. patch_file for edits. delete_file to remove.
+- Give complete, working code — never placeholders.
 - After changes: verify with run_command (build/test).
 - Keep responses short. Lead with action, not reasoning.
+
+WHEN TO USE delegate_to_agents vs handle directly:
+- SIMPLE (do it yourself): UI changes, bug fixes, single-file edits, styling, adding features to 1-2 files
+- COMPLEX (use delegate_to_agents): building entire new systems, 5+ file changes, needs architecture planning
 
 TOOLS: read_file, write_file, delete_file, patch_file, run_command, list_directory, search_files, build_code_graph, get_impact_radius, get_architecture, find_large_functions, delegate_to_agents.`;
 
@@ -561,7 +564,7 @@ export const useAiStore = create<AiState>((set, get) => ({
         {
           name: "delegate_to_agents",
           description:
-            "Delegate a complex task to the specialized 8-agent team (Architect, Coder, Reviewer, Tester, QA, Documenter, Deployer). Use for multi-file implementations, tasks needing review/testing, refactoring, or significant code changes. The agents will explore the codebase, make changes with approval, and return comprehensive results.",
+            "Delegate to the agent team ONLY for complex tasks involving 5+ files or entire new systems. Do NOT use for simple tasks like UI changes, bug fixes, or editing 1-2 files — handle those directly with read_file/write_file/patch_file yourself.",
           schema: z.object({
             task: z.string().describe("Clear, specific task description for the agent team to execute"),
           }),
@@ -652,13 +655,29 @@ export const useAiStore = create<AiState>((set, get) => ({
 
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const toolMap = new Map<string, any>(allTools.map((t: any) => [t.name, t]));
+          // Retry helper for rate limit errors (429)
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const invokeRetry = async (m: any, msgs: any[]) => {
+            for (let attempt = 0; attempt < 3; attempt++) {
+              try { return await m.invoke(msgs); } catch (err: any) {
+                const msg = err?.message || String(err);
+                if ((msg.includes("429") || msg.includes("rate limit") || msg.includes("Rate limit")) && attempt < 2) {
+                  get().addToolActivity(`⏳ Rate limited — retrying in ${(attempt + 1) * 3}s...`);
+                  await new Promise(r => setTimeout(r, (attempt + 1) * 3000));
+                  continue;
+                }
+                throw err;
+              }
+            }
+          };
+
           let currentMessages = [...langChainMessages];
           let iterations = 0;
           const MAX_ITERATIONS = isLocal ? 5 : 10;
 
           while (iterations < MAX_ITERATIONS) {
             iterations++;
-            const response = await modelWithTools.invoke(currentMessages);
+            const response = await invokeRetry(modelWithTools, currentMessages);
             currentMessages.push(response);
 
             const toolCalls = response.tool_calls;
