@@ -307,7 +307,8 @@ async function executeAgentLoop(
   config: LLMConfig,
   apiKeys: ApiKeys,
   onStep: (step: AgentStep) => void,
-  onApproval: (approval: PendingApproval) => Promise<boolean>
+  onApproval: (approval: PendingApproval) => Promise<boolean>,
+  workspacePath?: string | null
 ): Promise<string> {
   const agentInfo = AGENTS[role];
   const stepId = `step-${role}-${Date.now()}`;
@@ -331,7 +332,7 @@ async function executeAgentLoop(
         status: "working",
         timestamp: Date.now(),
       });
-    });
+    }, workspacePath);
 
     // Build tool map for execution
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -533,7 +534,7 @@ export async function runAgentWorkflow(
   ];
 
   const plan = await executeAgentLoop(
-    "supervisor", supervisorMessages, config, apiKeys, onStep, onApproval
+    "supervisor", supervisorMessages, config, apiKeys, onStep, onApproval, workspacePath
   );
   const parsedPlan = parseSupervisorPlan(plan);
 
@@ -570,7 +571,7 @@ export async function runAgentWorkflow(
         new HumanMessage(task),
       ];
       const result = await executeAgentLoop(
-        agent, messages, config, apiKeys, onStep, onApproval
+        agent, messages, config, apiKeys, onStep, onApproval, workspacePath
       );
       results[agent] = result;
       // Cap accumulated context to prevent token explosion
@@ -587,7 +588,7 @@ export async function runAgentWorkflow(
           new HumanMessage(task),
         ];
         const result = await executeAgentLoop(
-          agent, messages, config, apiKeys, onStep, onApproval
+          agent, messages, config, apiKeys, onStep, onApproval, workspacePath
         );
         return { agent, result };
       });
@@ -622,7 +623,7 @@ Provide a comprehensive summary: what was accomplished, issues found, and recomm
   ];
 
   const finalResult = await executeAgentLoop(
-    "supervisor", summaryMessages, config, apiKeys, onStep, onApproval
+    "supervisor", summaryMessages, config, apiKeys, onStep, onApproval, workspacePath
   );
   return finalResult;
 }

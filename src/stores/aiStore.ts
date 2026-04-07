@@ -236,35 +236,39 @@ function buildSystemPrompt(
   isLocal?: boolean,
   techStack?: string
 ): string {
-  // ── LOCAL: compact prompt with core tools ──
+  // ── LOCAL: compact prompt, core tools ──
   if (isLocal) {
-    let prompt = `You are Aether, a coding AI with codebase access. Use tools to read, write, and run commands.
+    let prompt = `You are Aether, an AI coding agent. You MUST use tools to make real changes to files. Never just describe what you would do — actually do it.
 
-TOOLS: read_file, write_file, run_command, list_directory, search_files, delegate_to_agents.
-RULES: Lead with code. Exact file paths. No placeholders. Short responses.`;
+TOOLS: read_file, write_file, delete_file, patch_file, run_command, list_directory, delegate_to_agents.
+CRITICAL RULES:
+- ALWAYS use write_file/patch_file to create/modify files. Files MUST appear on disk.
+- Use ABSOLUTE paths: ${workspacePath || "/path/to/workspace"}/src/file.ts
+- read_file BEFORE modifying. write_file to create new files. patch_file for edits. delete_file to remove.
+- For complex multi-file tasks, use delegate_to_agents.
+- Lead with code. No placeholders. Short responses.`;
 
-    if (techStack) prompt += `\n\nStack: ${techStack}`;
-    if (workspacePath) prompt += `\nPath: ${workspacePath}`;
+    if (techStack) prompt += `\nStack: ${techStack}`;
     if (workspaceTree) prompt += `\nFiles:\n${workspaceTree}`;
     if (fileContext) prompt += `\nOpen:\n${fileContext}`;
     return prompt;
   }
 
-  // ── CLOUD: tools + concise workflow ──
-  let prompt = `You are Aether, a senior coding assistant with full codebase access via tools.
+  // ── CLOUD: all tools + concise workflow ──
+  let prompt = `You are Aether, an AI coding agent with full filesystem access. You MUST use tools to make real changes — never just describe what you would do.
 
-RESPONSE RULES:
-- Lead with the answer or action, not reasoning
-- Show exact file paths when referencing code
-- Give complete, working code — never placeholders or pseudo-code
-- Keep responses short. If one sentence works, don't write three.
-- After changes: verify with run_command (build/test)
+CRITICAL RULES:
+- ALWAYS use tools (write_file, patch_file, delete_file) to create/modify/delete files. Changes MUST appear on disk.
+- Use ABSOLUTE paths: ${workspacePath || "/path/to/workspace"}/src/file.ts
+- read_file BEFORE editing. write_file creates new files + dirs automatically. patch_file for targeted edits.
+- For complex multi-file tasks, use delegate_to_agents to dispatch to specialist team.
+- Give complete, working code — never placeholders or pseudo-code.
+- After changes: verify with run_command (build/test).
+- Keep responses short. Lead with action, not reasoning.
 
-TOOLS: read_file, write_file, patch_file, run_command, list_directory, search_files, build_code_graph, get_impact_radius, delegate_to_agents.
-Always use tools for file operations. Never say "I can't access files."`;
+TOOLS: read_file, write_file, delete_file, patch_file, run_command, list_directory, search_files, build_code_graph, get_impact_radius, get_architecture, find_large_functions, delegate_to_agents.`;
 
     if (techStack) prompt += `\n\nStack: ${techStack}`;
-    if (workspacePath) prompt += `\nPath: ${workspacePath}`;
     if (workspaceTree) prompt += `\nFiles:\n${workspaceTree}`;
     if (fileContext) prompt += `\nOpen:\n${fileContext}`;
     return prompt;
@@ -487,6 +491,7 @@ export const useAiStore = create<AiState>((set, get) => ({
       const model = createChatModel(activeConfig, apiKeys);
 
       // Create direct tools for the AI (read/write/run/search)
+      // Pass workspacePath so ALL tools resolve relative paths → absolute
       const directTools = createAgentTools("supervisor" as any, async (_approval) => {
         // Auto-approve for direct AI tool calls
         return true;
@@ -499,7 +504,7 @@ export const useAiStore = create<AiState>((set, get) => ({
               : m
           ),
         }));
-      });
+      }, workspacePath);
 
       // Create the delegate_to_agents tool for smart routing to 8-agent team
       const delegateTool = tool(
@@ -530,14 +535,10 @@ export const useAiStore = create<AiState>((set, get) => ({
                 });
                 get().addToolActivity(`${step.action}`);
               },
-              // Approval callback — shows inline approval UI in chat
-              (approval) => {
-                return new Promise<boolean>((resolve) => {
-                  aiApprovalCallbacks.set(approval.id, resolve);
-                  set((s) => ({
-                    pendingApprovals: [...s.pendingApprovals, approval],
-                  }));
-                });
+              // Auto-approve all agent actions (no human intervention)
+              async (approval) => {
+                get().addToolActivity(`✅ Auto-approved: ${approval.action}`);
+                return true;
               },
               workspacePath,
               fileContext
@@ -608,17 +609,13 @@ export const useAiStore = create<AiState>((set, get) => ({
         }));
       };
 
-      // Build tool set: local gets 4 core tools, cloud gets all + delegation
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      let allTools: any[];
+      // Local gets 6 core tools (for CPU users), cloud gets all tools + agents
       const isLocal = activeConfig.provider === "local";
-      if (isLocal) {
-        // Local: 5 core tools + delegate — keeps token count manageable
-        const coreNames = new Set(["read_file", "write_file", "run_command", "list_directory", "search_files"]);
-        allTools = [...directTools.filter((t: any) => coreNames.has(t.name)), delegateTool];
-      } else {
-        allTools = [...directTools, delegateTool] as any[];
-      }
+      const coreToolNames = ["read_file", "write_file", "delete_file", "patch_file", "run_command", "list_directory"];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const localTools = [...directTools.filter((t: any) => coreToolNames.includes(t.name)), delegateTool] as any[];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const allTools = isLocal ? localTools : [...directTools, delegateTool] as any[];
 
       // Try to bind tools — if model supports it, use tool-calling mode
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

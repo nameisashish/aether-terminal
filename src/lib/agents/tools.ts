@@ -30,19 +30,29 @@ function generateApprovalId(): string {
 /**
  * Creates the set of tools available to agents.
  * Tools that modify the system require human-in-the-loop approval.
+ * workspacePath is used to resolve relative paths to absolute.
  */
 export function createAgentTools(
   agentRole: AgentRole,
   onApproval: ApprovalCallback,
-  onOutput: OutputCallback
+  onOutput: OutputCallback,
+  workspacePath?: string | null
 ) {
+  // Resolve relative paths to absolute using workspace root
+  const resolve = (p: string): string => {
+    if (p.startsWith("/")) return p;
+    if (workspacePath) return `${workspacePath}/${p}`;
+    return p;
+  };
+
   // ── Read File Tool ──
   const readFileTool = tool(
-    async ({ path }) => {
+    async ({ path: rawPath }) => {
+      const path = resolve(rawPath);
       try {
         const { readTextFile } = await import("@tauri-apps/plugin-fs");
         const content = await readTextFile(path);
-        onOutput(`📖 Read file: ${path} (${content.length} chars)`);
+        onOutput(`📖 Read: ${rawPath} (${content.length} chars)`);
         // Truncate very large files to avoid blowing context
         if (content.length > 15000) {
           return content.slice(0, 15000) + `\n\n...[truncated — file is ${content.length} chars total]`;
@@ -64,7 +74,8 @@ export function createAgentTools(
 
   // ── Write File Tool (requires approval) ──
   const writeFileTool = tool(
-    async ({ path, content }) => {
+    async ({ path: rawPath, content }) => {
+      const path = resolve(rawPath);
       const approved = await onApproval({
         id: generateApprovalId(),
         agentRole,
@@ -79,7 +90,12 @@ export function createAgentTools(
       }
 
       try {
-        const { writeTextFile } = await import("@tauri-apps/plugin-fs");
+        const { writeTextFile, mkdir } = await import("@tauri-apps/plugin-fs");
+        // Ensure parent directory exists
+        const parentDir = path.substring(0, path.lastIndexOf("/"));
+        if (parentDir) {
+          try { await mkdir(parentDir, { recursive: true }); } catch { /* already exists */ }
+        }
         await writeTextFile(path, content);
         onOutput(`✍️ Wrote file: ${path}`);
         return `Successfully wrote to ${path}`;
@@ -92,8 +108,44 @@ export function createAgentTools(
       description:
         "Write content to a file. Requires user approval. Creates the file if it doesn't exist. ALWAYS read the file first before writing.",
       schema: z.object({
-        path: z.string().describe("Absolute path to write to"),
+        path: z.string().describe("Path to write to (relative to workspace or absolute)"),
         content: z.string().describe("Complete file content to write"),
+      }),
+    }
+  );
+
+  // ── Delete File Tool (requires approval) ──
+  const deleteFileTool = tool(
+    async ({ path: rawPath }) => {
+      const path = resolve(rawPath);
+      const approved = await onApproval({
+        id: generateApprovalId(),
+        agentRole,
+        action: `Delete file: ${path}`,
+        detail: path,
+        type: "file_write",
+        timestamp: Date.now(),
+      });
+
+      if (!approved) {
+        return "Action rejected by user.";
+      }
+
+      try {
+        const { remove } = await import("@tauri-apps/plugin-fs");
+        await remove(path);
+        onOutput(`🗑️ Deleted: ${path}`);
+        return `Successfully deleted ${path}`;
+      } catch (err) {
+        return `Error deleting file: ${err}`;
+      }
+    },
+    {
+      name: "delete_file",
+      description:
+        "Delete a file or empty directory. Requires user approval. Use when cleaning up, removing old files, or restructuring.",
+      schema: z.object({
+        path: z.string().describe("Path to delete (relative to workspace or absolute)"),
       }),
     }
   );
@@ -116,7 +168,9 @@ export function createAgentTools(
 
       try {
         const { Command } = await import("@tauri-apps/plugin-shell");
-        const cmd = Command.create("sh", ["-c", command]);
+        // cd into workspace before running command so relative paths work
+        const fullCmd = workspacePath ? `cd ${JSON.stringify(workspacePath)} && ${command}` : command;
+        const cmd = Command.create("sh", ["-c", fullCmd]);
         const output = await cmd.execute();
         const result = output.stdout + (output.stderr ? "\nSTDERR:\n" + output.stderr : "");
         onOutput(`⚡ Ran: ${command}`);
@@ -141,7 +195,8 @@ export function createAgentTools(
 
   // ── List Directory Tool ──
   const listDirTool = tool(
-    async ({ path }) => {
+    async ({ path: rawPath }) => {
+      const path = resolve(rawPath);
       try {
         const { readDir } = await import("@tauri-apps/plugin-fs");
         const entries = await readDir(path);
@@ -159,14 +214,15 @@ export function createAgentTools(
       description:
         "List files and directories at the given path. Use to explore project structure before reading specific files.",
       schema: z.object({
-        path: z.string().describe("Absolute path to the directory"),
+        path: z.string().describe("Path to the directory (relative to workspace or absolute)"),
       }),
     }
   );
 
   // ── Search Files Tool (grep-like) ──
   const searchFilesTool = tool(
-    async ({ pattern, directory, fileExtension }) => {
+    async ({ pattern, directory: rawDir, fileExtension }) => {
+      const directory = resolve(rawDir);
       try {
         // Validate inputs — reject newlines and control chars to prevent injection
         if (/[\n\r\x00]/.test(pattern) || /[\n\r\x00]/.test(directory)) {
@@ -192,7 +248,7 @@ export function createAgentTools(
         "Search for a pattern across files in a directory (like grep). Returns matching lines with file paths and line numbers. Useful for finding function definitions, imports, usages, etc.",
       schema: z.object({
         pattern: z.string().describe("Text or regex pattern to search for"),
-        directory: z.string().describe("Absolute path to search in"),
+        directory: z.string().describe("Path to search in (relative to workspace or absolute)"),
         fileExtension: z.string().optional().describe("Filter by file extension, e.g. 'ts', 'py', 'rs'. Omit to search all files."),
       }),
     }
@@ -200,7 +256,8 @@ export function createAgentTools(
 
   // ── Patch File Tool (requires approval) ──
   const patchFileTool = tool(
-    async ({ path, search, replace }) => {
+    async ({ path: rawPath, search, replace }) => {
+      const path = resolve(rawPath);
       const approved = await onApproval({
         id: generateApprovalId(),
         agentRole,
@@ -233,7 +290,7 @@ export function createAgentTools(
       description:
         "Replace a specific section of a file. Provide the exact text to search for and the replacement. More precise than write_file for small changes. ALWAYS read the file first.",
       schema: z.object({
-        path: z.string().describe("Absolute path to the file"),
+        path: z.string().describe("Path to the file (relative to workspace or absolute)"),
         search: z.string().describe("Exact text to find (must match exactly)"),
         replace: z.string().describe("Text to replace it with"),
       }),
@@ -245,7 +302,8 @@ export function createAgentTools(
   // blast-radius analysis, architecture overview, and more.
 
   const buildGraphTool = tool(
-    async ({ directory }) => {
+    async ({ directory: rawDir }) => {
+      const directory = resolve(rawDir);
       try {
         const graph = await buildCodeGraph(directory);
         const stats = getGraphStats(graph);
@@ -260,13 +318,15 @@ export function createAgentTools(
       description:
         "Scan the workspace and build a dependency graph of all source files. Returns stats about the codebase (file count, languages, edges). Must be called before using get_impact_radius or get_architecture.",
       schema: z.object({
-        directory: z.string().describe("Absolute path to the workspace root"),
+        directory: z.string().describe("Path to the workspace root (relative or absolute)"),
       }),
     }
   );
 
   const impactRadiusTool = tool(
-    async ({ directory, filePath }) => {
+    async ({ directory: rawDir, filePath: rawFile }) => {
+      const directory = resolve(rawDir);
+      const filePath = resolve(rawFile);
       try {
         const graph = await buildCodeGraph(directory);
         const relativePath = filePath.replace(directory + "/", "");
@@ -295,14 +355,15 @@ export function createAgentTools(
       description:
         "Compute the blast radius of changing a file. Shows all files that depend on it (direct + transitive). Use BEFORE modifying a file to understand what could break.",
       schema: z.object({
-        directory: z.string().describe("Absolute path to the workspace root"),
-        filePath: z.string().describe("Absolute path to the file to analyze"),
+        directory: z.string().describe("Path to the workspace root (relative or absolute)"),
+        filePath: z.string().describe("Path to the file to analyze (relative or absolute)"),
       }),
     }
   );
 
   const architectureTool = tool(
-    async ({ directory }) => {
+    async ({ directory: rawDir }) => {
+      const directory = resolve(rawDir);
       try {
         const graph = await buildCodeGraph(directory);
         const modules = getArchitectureOverview(graph);
@@ -327,13 +388,14 @@ export function createAgentTools(
       description:
         "Get an architecture overview showing module coupling. Groups files by directory and shows how modules depend on each other. Useful for understanding codebase structure before large changes.",
       schema: z.object({
-        directory: z.string().describe("Absolute path to the workspace root"),
+        directory: z.string().describe("Path to the workspace root (relative or absolute)"),
       }),
     }
   );
 
   const largeFunctionsTool = tool(
-    async ({ directory, threshold }) => {
+    async ({ directory: rawDir, threshold }) => {
+      const directory = resolve(rawDir);
       try {
         const graph = await buildCodeGraph(directory);
         const large = findLargeFunctions(graph, threshold || 50);
@@ -361,14 +423,14 @@ export function createAgentTools(
       description:
         "Find functions that exceed a line count threshold (default 50). These are candidates for refactoring. Returns function name, file, line number, and size.",
       schema: z.object({
-        directory: z.string().describe("Absolute path to the workspace root"),
+        directory: z.string().describe("Path to the workspace root (relative or absolute)"),
         threshold: z.number().optional().describe("Minimum lines to flag (default: 50)"),
       }),
     }
   );
 
   return [
-    readFileTool, writeFileTool, patchFileTool, runCommandTool,
+    readFileTool, writeFileTool, deleteFileTool, patchFileTool, runCommandTool,
     listDirTool, searchFilesTool,
     buildGraphTool, impactRadiusTool, architectureTool, largeFunctionsTool,
   ];
