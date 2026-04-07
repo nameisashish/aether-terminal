@@ -161,82 +161,46 @@ async function getWorkspaceTree(workspacePath: string): Promise<string> {
 }
 
 /**
- * System prompt — unified AI with direct tools + agent delegation.
- * Includes workspace directory tree for instant project awareness.
+ * System prompt — two versions:
+ * - LOCAL: Ultra-compact (~300 tokens) for small Ollama models
+ * - CLOUD: Full-featured for cloud providers with larger context
  */
-function buildSystemPrompt(workspacePath?: string | null, fileContext?: string, workspaceTree?: string): string {
-  let prompt = `You are Aether, an AI coding assistant embedded in a professional terminal application. You have FULL ACCESS to the user's codebase and can perform real actions.
+function buildSystemPrompt(
+  workspacePath?: string | null,
+  fileContext?: string,
+  workspaceTree?: string,
+  isLocal?: boolean
+): string {
+  // ── LOCAL: compact prompt for small models ──
+  if (isLocal) {
+    let prompt = `You are Aether, a coding AI with full codebase access. Use your tools to read, write, and search files. Always use tools — never say you can't access files.
 
-YOUR CAPABILITIES:
-- Read any file in the workspace using read_file
-- Write or create files using write_file (requires user approval)
-- Modify specific parts of files using patch_file (requires user approval)
-- Run shell commands (build, test, lint, git) using run_command (requires user approval)
-- List directory contents using list_directory
-- Search across files using search_files
-- Build a code dependency graph using build_code_graph
-- Compute blast radius of a file change using get_impact_radius
-- View module coupling & architecture using get_architecture
-- Find large functions needing refactoring using find_large_functions
-- Delegate complex tasks to an 8-agent specialist team using delegate_to_agents
+Tools: read_file, write_file, patch_file, run_command, list_directory, search_files, delegate_to_agents.
+For changes: read first, then write/patch. User approves writes.`;
 
-== WORKFLOW ORCHESTRATION ==
-
-1. PLAN FIRST (for any non-trivial task with 3+ steps):
-   - Before coding, outline your plan as a numbered checklist
-   - Show the plan to the user before executing
-   - Track progress: mark each step done as you complete it
-   - If something goes wrong, STOP and re-plan — don't keep pushing
-
-2. SMART ROUTING:
-   DIRECT MODE (default): questions, exploration, simple single-file changes.
-   DELEGATION MODE: use delegate_to_agents for multi-file features, refactoring, tasks needing review/testing, or when user asks for "agents".
-   Agent team: Architect, Coder, Reviewer, Tester, QA, Documenter, Deployer.
-
-3. VERIFICATION BEFORE DONE:
-   - After making changes, verify they work (run build, lint, or tests via run_command)
-   - Check for errors in the output before reporting success
-   - Never mark a task complete without proving it works
-
-4. AUTONOMOUS BUG FIXING:
-   - When given a bug report: investigate → diagnose → fix → verify. Don't ask for hand-holding.
-   - Read error logs, trace the code path, then fix the root cause.
-
-5. BLAST-RADIUS AWARENESS (code-review-graph inspired):
-   - Use build_code_graph to index the codebase dependency graph
-   - Before modifying a file, use get_impact_radius to check what depends on it
-   - Use get_architecture to understand module coupling before large changes
-   - Make minimal, targeted changes — don't refactor surrounding code unnecessarily
-
-== CORE PRINCIPLES ==
-
-- SIMPLICITY FIRST: Make every change as simple as possible. Impact minimal code.
-- NO LAZINESS: Find root causes. No temporary fixes. Senior developer standards.
-- MINIMAL IMPACT: Changes should only touch what's necessary. Avoid introducing bugs.
-- ALWAYS USE TOOLS: Never say "I can't access files" — you have full codebase access.
-  When asked about the project, reference the directory tree and explore with your tools.
-  When asked to modify files, USE write_file/patch_file — don't just show code snippets.
-
-== WORKFLOW STEPS ==
-
-1. You already have the project structure below — use it to understand the project
-2. Use read_file to dive into specific files when needed
-3. For changes: analyze_imports first, then write_file or patch_file (user approves)
-4. After changes: verify with run_command (build/test/lint)
-5. For complex multi-step tasks: delegate_to_agents`;
-
-  if (workspacePath) {
-    prompt += `\n\nCURRENT WORKSPACE: ${workspacePath}`;
+    if (workspacePath) prompt += `\nWorkspace: ${workspacePath}`;
+    if (workspaceTree) prompt += `\nFiles:\n${workspaceTree}`;
+    if (fileContext) prompt += `\nContext:\n${fileContext}`;
+    return prompt;
   }
 
-  if (workspaceTree) {
-    prompt += `\n\nPROJECT STRUCTURE:\n\`\`\`\n${workspaceTree}\n\`\`\`\nUse this structure to answer questions about the project. Read specific files with read_file for details.`;
-  }
+  // ── CLOUD: full prompt for capable models ──
+  let prompt = `You are Aether, an AI coding assistant with full codebase access. Use tools to perform real actions.
 
-  if (fileContext) {
-    prompt += `\n\nFILES IN CONTEXT (selected by user):\n${fileContext}`;
-  }
+TOOLS: read_file, write_file, patch_file, run_command, list_directory, search_files, build_code_graph, get_impact_radius, get_architecture, find_large_functions, delegate_to_agents.
 
+WORKFLOW:
+1. Plan before multi-step tasks (show numbered checklist)
+2. Read files before modifying — use get_impact_radius for blast-radius awareness
+3. Write changes via write_file/patch_file (user approves)
+4. Verify after changes: run build/test/lint via run_command
+5. For complex tasks: delegate_to_agents (Architect, Coder, Reviewer, Tester, QA, Deployer)
+
+RULES: Always use tools. Never say "I can't access files." Minimal changes only. Fix root causes.`;
+
+  if (workspacePath) prompt += `\n\nWorkspace: ${workspacePath}`;
+  if (workspaceTree) prompt += `\n\nProject structure:\n\`\`\`\n${workspaceTree}\n\`\`\``;
+  if (fileContext) prompt += `\n\nFiles in context:\n${fileContext}`;
   return prompt;
 }
 
@@ -533,9 +497,16 @@ export const useAiStore = create<AiState>((set, get) => ({
         }
       );
 
-      // Combine direct tools + delegation tool
+      // Combine tools — for local models, use only essential tools (fewer tokens)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const allTools = [...directTools, delegateTool] as any[];
+      let allTools: any[];
+      if (activeConfig.provider === "local") {
+        // Local: only 4 core tools (saves ~1000 tokens of tool schemas)
+        const coreToolNames = new Set(["read_file", "write_file", "list_directory", "run_command"]);
+        allTools = directTools.filter((t: any) => coreToolNames.has(t.name));
+      } else {
+        allTools = [...directTools, delegateTool] as any[];
+      }
 
       // Try to bind tools to model
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -551,7 +522,7 @@ export const useAiStore = create<AiState>((set, get) => ({
 
       // Helper: run simple streaming mode (no tools)
       const runSimpleStreaming = async (prefix?: string) => {
-        const systemPrompt = buildSystemPrompt(workspacePath, fileContext, workspaceTree);
+        const systemPrompt = buildSystemPrompt(workspacePath, fileContext, workspaceTree, activeConfig.provider === "local");
         const allMessages = [...messages, userMessage];
 
         if (prefix) {
@@ -596,13 +567,14 @@ export const useAiStore = create<AiState>((set, get) => ({
         // Ollama models that don't fully support function calling), we gracefully
         // fall back to simple streaming mode instead of showing an error.
         try {
-          const systemPrompt = buildSystemPrompt(workspacePath, fileContext, workspaceTree);
+          const systemPrompt = buildSystemPrompt(workspacePath, fileContext, workspaceTree, activeConfig.provider === "local");
           const langChainMessages: BaseMessage[] = [
             new SystemMessage(systemPrompt),
           ];
 
-          // Add conversation history (last 10 messages for context)
-          for (const msg of messages.slice(-10)) {
+          // Add conversation history — fewer for local models to save context
+          const historyCount = activeConfig.provider === "local" ? 4 : 10;
+          for (const msg of messages.slice(-historyCount)) {
             if (msg.role === "user") {
               langChainMessages.push(new HumanMessage(msg.content));
             } else if (msg.role === "assistant" && !msg.isStreaming) {

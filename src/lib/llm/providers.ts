@@ -70,9 +70,9 @@ export function createChatModel(
         model: config.model,
         temperature: config.temperature,
         baseUrl: "http://localhost:11434",
-        numCtx: 4096,
+        numCtx: 2048,       // Smaller context = faster inference
         keepAlive: "10m",
-        numPredict: 1024,
+        numPredict: 512,    // Cap output for faster tool-call responses
         fetch: createTauriFetch(),
       });
       return ollamaModel;
@@ -128,15 +128,19 @@ export function createChatModel(
       });
 
     case "openrouter":
-      // OpenRouter uses OpenAI-compatible API
+      // OpenRouter uses OpenAI-compatible API with its own key format
       return new ChatOpenAI({
-        openAIApiKey: apiKeys.openrouter!,
         modelName: config.model,
         temperature: config.temperature,
         maxTokens: config.maxTokens,
         streaming: config.streaming,
         configuration: {
           baseURL: "https://openrouter.ai/api/v1",
+          apiKey: apiKeys.openrouter!,
+          defaultHeaders: {
+            "HTTP-Referer": "https://aetherterminal.app",
+            "X-Title": "Aether Terminal",
+          },
         },
       });
 
@@ -212,7 +216,7 @@ async function streamOllamaViaRust(
       model: config.model,
       messages: ollamaMessages,
       temperature: config.temperature ?? 0.7,
-      numCtx: 4096,
+      numCtx: 2048,
       numPredict: config.maxTokens ?? 1024,
     });
 
