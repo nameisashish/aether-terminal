@@ -19,18 +19,44 @@ import { HumanMessage, SystemMessage, AIMessage } from "@langchain/core/messages
 import type { LLMConfig, LLMProvider, ChatMessage, ApiKeys } from "./types";
 
 /**
+ * Creates a fetch function that routes through Tauri's HTTP plugin (Rust/reqwest),
+ * bypassing WebKit's hardcoded 60-second fetch timeout.
+ * Used by ChatOllama for tool-calling requests.
+ */
+function createTauriFetch(): typeof fetch {
+  let _tauriFetch: typeof fetch | null = null;
+  let _useBrowserFetch = false;
+
+  const customFetch: typeof fetch = async (input, init) => {
+    if (_useBrowserFetch) return fetch(input, init);
+
+    if (!_tauriFetch) {
+      try {
+        const mod = await import("@tauri-apps/plugin-http");
+        _tauriFetch = mod.fetch;
+      } catch {
+        console.warn("[Aether] Tauri HTTP plugin unavailable, using browser fetch");
+        _useBrowserFetch = true;
+        return fetch(input, init);
+      }
+    }
+
+    return _tauriFetch!(input, init);
+  };
+
+  return customFetch;
+}
+
+/**
  * Creates a LangChain chat model instance for the given provider + config.
- * Each provider has its own LangChain integration package.
  *
- * Note: For the "local" provider, this creates a standard ChatOllama instance
- * used only for tool-calling attempts. The main streaming path bypasses
- * LangChain entirely and uses the Rust-native proxy (see streamChat).
+ * For "local" (Ollama): uses Tauri HTTP plugin fetch for tool-calling
+ * (bypasses WebKit 60s timeout). Simple streaming uses the Rust proxy.
  */
 export function createChatModel(
   config: LLMConfig,
   apiKeys: ApiKeys
 ): BaseChatModel {
-  // Local provider doesn't need an API key
   if (config.provider !== "local") {
     const apiKey = apiKeys[config.provider];
     if (!apiKey) {
@@ -40,9 +66,6 @@ export function createChatModel(
 
   switch (config.provider) {
     case "local": {
-      // Ollama runs locally — no API key needed
-      // This instance is used for tool-calling attempts only.
-      // Simple streaming goes through the Rust proxy (streamChat).
       const ollamaModel = new ChatOllama({
         model: config.model,
         temperature: config.temperature,
@@ -50,6 +73,7 @@ export function createChatModel(
         numCtx: 4096,
         keepAlive: "10m",
         numPredict: 1024,
+        fetch: createTauriFetch(),
       });
       return ollamaModel;
     }

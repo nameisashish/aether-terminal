@@ -233,5 +233,70 @@ export function createAgentTools(
     }
   );
 
-  return [readFileTool, writeFileTool, patchFileTool, runCommandTool, listDirTool, searchFilesTool];
+  // ── Analyze Imports Tool (blast-radius awareness) ──
+  // Inspired by code-review-graph: traces import/dependency relationships
+  // so the AI understands which files are connected before making changes.
+  const analyzeImportsTool = tool(
+    async ({ filePath, directory }) => {
+      try {
+        const { readTextFile } = await import("@tauri-apps/plugin-fs");
+        const content = await readTextFile(filePath);
+
+        // Extract imports/requires from the file
+        const importPatterns = [
+          /import\s+.*?\s+from\s+['"](.+?)['"]/g,           // ES import
+          /import\s*\(\s*['"](.+?)['"]\s*\)/g,               // dynamic import
+          /require\s*\(\s*['"](.+?)['"]\s*\)/g,              // CommonJS
+          /use\s+(\w+(?:::\w+)*)/g,                           // Rust use
+          /from\s+(\S+)\s+import/g,                           // Python
+          /#include\s*[<"](.+?)[>"]/g,                        // C/C++
+        ];
+
+        const imports: string[] = [];
+        for (const pattern of importPatterns) {
+          let match;
+          while ((match = pattern.exec(content)) !== null) {
+            imports.push(match[1]);
+          }
+        }
+
+        // Find files that import THIS file (reverse dependencies)
+        let dependents = "";
+        if (directory) {
+          const { Command } = await import("@tauri-apps/plugin-shell");
+          const baseName = filePath.split("/").pop()?.replace(/\.\w+$/, "") || "";
+          if (baseName) {
+            const shellEscape = (s: string) => `'${s.replace(/'/g, "'\\''")}'`;
+            const cmd = `grep -rn --include="*.ts" --include="*.tsx" --include="*.js" --include="*.py" --include="*.rs" ${shellEscape(baseName)} ${shellEscape(directory)} | grep -i "import\\|from\\|require\\|use " | head -30`;
+            const shellCmd = Command.create("sh", ["-c", cmd]);
+            const output = await shellCmd.execute();
+            dependents = output.stdout || "(no dependents found)";
+          }
+        }
+
+        const result = [
+          `FILE: ${filePath}`,
+          `\nIMPORTS (${imports.length} dependencies):`,
+          imports.length > 0 ? imports.map((i) => `  → ${i}`).join("\n") : "  (none)",
+          dependents ? `\nIMPORTED BY (reverse dependencies):\n${dependents}` : "",
+        ].join("\n");
+
+        onOutput(`🔗 Analyzed imports: ${filePath}`);
+        return result;
+      } catch (err) {
+        return `Error analyzing imports: ${err}`;
+      }
+    },
+    {
+      name: "analyze_imports",
+      description:
+        "Analyze a file's import/dependency graph. Shows what the file depends on and what depends on it (blast radius). Use BEFORE modifying a file to understand its impact on the codebase.",
+      schema: z.object({
+        filePath: z.string().describe("Absolute path to the file to analyze"),
+        directory: z.string().optional().describe("Workspace root — used to find reverse dependencies (files that import this one)"),
+      }),
+    }
+  );
+
+  return [readFileTool, writeFileTool, patchFileTool, runCommandTool, listDirTool, searchFilesTool, analyzeImportsTool];
 }

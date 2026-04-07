@@ -92,10 +92,79 @@ function createMessageId(): string {
 }
 
 /**
- * System prompt — unified AI with direct tools + agent delegation.
- * Smart routing: simple tasks handled directly, complex tasks delegated.
+ * Fetches a shallow directory tree (2 levels) for the workspace.
+ * Returns a formatted string like:
+ *   src/
+ *     components/
+ *     lib/
+ *   package.json
+ *   tsconfig.json
  */
-function buildSystemPrompt(workspacePath?: string | null, fileContext?: string): string {
+let _cachedTree: { path: string; tree: string; ts: number } | null = null;
+const TREE_CACHE_TTL = 30_000; // 30 seconds
+
+async function getWorkspaceTree(workspacePath: string): Promise<string> {
+  // Return cached tree if fresh
+  if (_cachedTree && _cachedTree.path === workspacePath && Date.now() - _cachedTree.ts < TREE_CACHE_TTL) {
+    return _cachedTree.tree;
+  }
+
+  try {
+    const { readDir } = await import("@tauri-apps/plugin-fs");
+
+    const entries = await readDir(workspacePath);
+    const lines: string[] = [];
+    const SKIP = new Set(["node_modules", ".git", "target", "dist", ".next", ".cache", "__pycache__", ".DS_Store", "Thumbs.db"]);
+
+    // Sort: directories first, then files
+    const sorted = [...entries].sort((a, b) => {
+      const aDir = a.isDirectory ? 0 : 1;
+      const bDir = b.isDirectory ? 0 : 1;
+      if (aDir !== bDir) return aDir - bDir;
+      return a.name.localeCompare(b.name);
+    });
+
+    for (const entry of sorted) {
+      if (SKIP.has(entry.name) || entry.name.startsWith(".")) continue;
+
+      if (entry.isDirectory) {
+        lines.push(`${entry.name}/`);
+        // One level deeper
+        try {
+          const subEntries = await readDir(`${workspacePath}/${entry.name}`);
+          const subSorted = [...subEntries].sort((a, b) => {
+            const aDir = a.isDirectory ? 0 : 1;
+            const bDir = b.isDirectory ? 0 : 1;
+            if (aDir !== bDir) return aDir - bDir;
+            return a.name.localeCompare(b.name);
+          });
+          let count = 0;
+          for (const sub of subSorted) {
+            if (SKIP.has(sub.name) || sub.name.startsWith(".")) continue;
+            if (count >= 15) { lines.push(`  ... and ${subSorted.length - count} more`); break; }
+            lines.push(`  ${sub.name}${sub.isDirectory ? "/" : ""}`);
+            count++;
+          }
+        } catch { /* permission denied or similar */ }
+      } else {
+        lines.push(entry.name);
+      }
+    }
+
+    const tree = lines.join("\n");
+    _cachedTree = { path: workspacePath, tree, ts: Date.now() };
+    return tree;
+  } catch (err) {
+    console.warn("[Aether] Failed to build workspace tree:", err);
+    return "";
+  }
+}
+
+/**
+ * System prompt — unified AI with direct tools + agent delegation.
+ * Includes workspace directory tree for instant project awareness.
+ */
+function buildSystemPrompt(workspacePath?: string | null, fileContext?: string, workspaceTree?: string): string {
   let prompt = `You are Aether, an AI coding assistant embedded in a professional terminal application. You have FULL ACCESS to the user's codebase and can perform real actions.
 
 YOUR CAPABILITIES:
@@ -105,6 +174,7 @@ YOUR CAPABILITIES:
 - Run shell commands (build, test, lint, git) using run_command (requires user approval)
 - List directory contents using list_directory
 - Search across files using search_files
+- Analyze file dependencies & blast radius using analyze_imports
 - Delegate complex tasks to an 8-agent specialist team using delegate_to_agents
 
 SMART ROUTING — choose the right approach:
@@ -137,28 +207,23 @@ WHEN TO HANDLE DIRECTLY:
 - Quick explanations
 
 WORKFLOW — for ANY question about the codebase:
-1. FIRST use list_directory and read_file to explore the actual project
-2. THEN answer based on what you found — never guess or say "I don't have access"
+1. You already have the project structure below — use it to understand the project
+2. Use read_file to dive into specific files when needed
 3. When making changes, use write_file or patch_file and the user will approve
 4. For complex multi-step tasks, use delegate_to_agents
 
-YOUR COMMUNICATION STYLE:
-- Be precise and technical — explain non-obvious concepts briefly
-- When suggesting commands, provide them in \`code blocks\`
-- Show the "why" alongside the "what"
-- Default to production-grade approaches
-- Never produce placeholder or dummy code
-- If you're unsure, say so — never fabricate commands or APIs
-
 RULES:
 - You ALWAYS have access to the codebase. Never say "I can't access files" or "I'm just a chatbot"
-- When asked about the project, EXPLORE IT using your tools before answering
+- When asked about the project, reference the directory tree below and use your tools to explore further
 - When asked to create or modify files, USE YOUR TOOLS — don't just show code snippets
 - For complex multi-step tasks, use delegate_to_agents — don't try to do everything yourself`;
 
   if (workspacePath) {
-    prompt += `\n\nCURRENT WORKSPACE: ${workspacePath}
-Start by exploring this directory when the user asks about their project.`;
+    prompt += `\n\nCURRENT WORKSPACE: ${workspacePath}`;
+  }
+
+  if (workspaceTree) {
+    prompt += `\n\nPROJECT STRUCTURE:\n\`\`\`\n${workspaceTree}\n\`\`\`\nUse this structure to answer questions about the project. Read specific files with read_file for details.`;
   }
 
   if (fileContext) {
@@ -369,6 +434,14 @@ export const useAiStore = create<AiState>((set, get) => ({
         }
       }
 
+      // Fetch workspace directory tree for project awareness
+      let workspaceTree = "";
+      if (workspacePath) {
+        try {
+          workspaceTree = await getWorkspaceTree(workspacePath);
+        } catch { /* non-critical */ }
+      }
+
       // Build the model
       const model = createChatModel(activeConfig, apiKeys);
 
@@ -471,7 +544,7 @@ export const useAiStore = create<AiState>((set, get) => ({
 
       // Helper: run simple streaming mode (no tools)
       const runSimpleStreaming = async (prefix?: string) => {
-        const systemPrompt = buildSystemPrompt(workspacePath, fileContext);
+        const systemPrompt = buildSystemPrompt(workspacePath, fileContext, workspaceTree);
         const allMessages = [...messages, userMessage];
 
         if (prefix) {
@@ -516,7 +589,7 @@ export const useAiStore = create<AiState>((set, get) => ({
         // Ollama models that don't fully support function calling), we gracefully
         // fall back to simple streaming mode instead of showing an error.
         try {
-          const systemPrompt = buildSystemPrompt(workspacePath, fileContext);
+          const systemPrompt = buildSystemPrompt(workspacePath, fileContext, workspaceTree);
           const langChainMessages: BaseMessage[] = [
             new SystemMessage(systemPrompt),
           ];
