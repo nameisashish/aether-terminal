@@ -236,16 +236,12 @@ function buildSystemPrompt(
   isLocal?: boolean,
   techStack?: string
 ): string {
-  // ── LOCAL: direct streaming only, no tools ──
+  // ── LOCAL: compact prompt with core tools ──
   if (isLocal) {
-    let prompt = `You are Aether, a senior coding assistant. You know this project's structure and tech stack. Give precise, code-first answers.
+    let prompt = `You are Aether, a coding AI with codebase access. Use tools to read, write, and run commands.
 
-RESPONSE RULES:
-- Lead with the answer or code, not explanation
-- Show exact file paths and line numbers when referencing code
-- Give complete, working code — never placeholders
-- Keep responses short and actionable
-- For commands: show the exact command to run`;
+TOOLS: read_file, write_file, run_command, list_directory, search_files, delegate_to_agents.
+RULES: Lead with code. Exact file paths. No placeholders. Short responses.`;
 
     if (techStack) prompt += `\n\nStack: ${techStack}`;
     if (workspacePath) prompt += `\nPath: ${workspacePath}`;
@@ -612,17 +608,19 @@ export const useAiStore = create<AiState>((set, get) => ({
         }));
       };
 
-      // Local models: skip tool-calling, stream directly.
-      // Small models are unreliable at tool-call JSON and waste time trying.
-      // The workspace tree in the prompt already gives project awareness.
-      if (activeConfig.provider === "local") {
-        await runSimpleStreaming();
-        return;
+      // Build tool set: local gets 4 core tools, cloud gets all + delegation
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let allTools: any[];
+      const isLocal = activeConfig.provider === "local";
+      if (isLocal) {
+        // Local: 5 core tools + delegate — keeps token count manageable
+        const coreNames = new Set(["read_file", "write_file", "run_command", "list_directory", "search_files"]);
+        allTools = [...directTools.filter((t: any) => coreNames.has(t.name)), delegateTool];
+      } else {
+        allTools = [...directTools, delegateTool] as any[];
       }
 
-      // Cloud providers: build tools + try tool-calling mode
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const allTools = [...directTools, delegateTool] as any[];
+      // Try to bind tools — if model supports it, use tool-calling mode
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let modelWithTools: any = null;
       try {
@@ -631,16 +629,21 @@ export const useAiStore = create<AiState>((set, get) => ({
       } catch { /* model doesn't support tools */ }
 
       if (modelWithTools) {
+        // Tool-calling mode: works for both local + cloud
+        // Local uses Tauri HTTP plugin fetch (no WebKit 60s timeout)
+        // If it fails, falls back to simple streaming
         try {
-          const systemPrompt = buildSystemPrompt(workspacePath, fileContext, workspaceTree, false, techStack);
+          const systemPrompt = buildSystemPrompt(workspacePath, fileContext, workspaceTree, isLocal, techStack);
           const langChainMessages: BaseMessage[] = [
             new SystemMessage(systemPrompt),
           ];
 
-          // Truncate history messages to save tokens
-          for (const msg of messages.slice(-6)) {
-            const truncated = msg.content.length > 800
-              ? msg.content.slice(0, 800) + "...(truncated)"
+          // Truncate history: local=4 msgs/600 chars, cloud=6 msgs/800 chars
+          const historySlice = isLocal ? messages.slice(-4) : messages.slice(-6);
+          const maxChars = isLocal ? 600 : 800;
+          for (const msg of historySlice) {
+            const truncated = msg.content.length > maxChars
+              ? msg.content.slice(0, maxChars) + "...(truncated)"
               : msg.content;
             if (msg.role === "user") {
               langChainMessages.push(new HumanMessage(truncated));
@@ -654,7 +657,7 @@ export const useAiStore = create<AiState>((set, get) => ({
           const toolMap = new Map<string, any>(allTools.map((t: any) => [t.name, t]));
           let currentMessages = [...langChainMessages];
           let iterations = 0;
-          const MAX_ITERATIONS = 10;
+          const MAX_ITERATIONS = isLocal ? 5 : 10;
 
           while (iterations < MAX_ITERATIONS) {
             iterations++;
