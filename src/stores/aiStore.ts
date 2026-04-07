@@ -141,7 +141,7 @@ async function getWorkspaceTree(workspacePath: string): Promise<string> {
           let count = 0;
           for (const sub of subSorted) {
             if (SKIP.has(sub.name) || sub.name.startsWith(".")) continue;
-            if (count >= 15) { lines.push(`  ... and ${subSorted.length - count} more`); break; }
+            if (count >= 8) { lines.push(`  +${subSorted.length - count} more`); break; }
             lines.push(`  ${sub.name}${sub.isDirectory ? "/" : ""}`);
             count++;
           }
@@ -497,29 +497,6 @@ export const useAiStore = create<AiState>((set, get) => ({
         }
       );
 
-      // Combine tools — for local models, use only essential tools (fewer tokens)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      let allTools: any[];
-      if (activeConfig.provider === "local") {
-        // Local: only 4 core tools (saves ~1000 tokens of tool schemas)
-        const coreToolNames = new Set(["read_file", "write_file", "list_directory", "run_command"]);
-        allTools = directTools.filter((t: any) => coreToolNames.has(t.name));
-      } else {
-        allTools = [...directTools, delegateTool] as any[];
-      }
-
-      // Try to bind tools to model
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      let modelWithTools: any = model;
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const bound = (model as any).bindTools?.(allTools);
-        modelWithTools = bound || model;
-      } catch {
-        // Model doesn't support tools — fall back to simple streaming
-        modelWithTools = null;
-      }
-
       // Helper: run simple streaming mode (no tools)
       const runSimpleStreaming = async (prefix?: string) => {
         const systemPrompt = buildSystemPrompt(workspacePath, fileContext, workspaceTree, activeConfig.provider === "local");
@@ -561,24 +538,40 @@ export const useAiStore = create<AiState>((set, get) => ({
         }));
       };
 
+      // Local models: skip tool-calling, stream directly.
+      // Small models are unreliable at tool-call JSON and waste time trying.
+      // The workspace tree in the prompt already gives project awareness.
+      if (activeConfig.provider === "local") {
+        await runSimpleStreaming();
+        return;
+      }
+
+      // Cloud providers: build tools + try tool-calling mode
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const allTools = [...directTools, delegateTool] as any[];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let modelWithTools: any = null;
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        modelWithTools = (model as any).bindTools?.(allTools) || null;
+      } catch { /* model doesn't support tools */ }
+
       if (modelWithTools) {
-        // ── Agentic mode: tool-calling loop ──
-        // Wrapped in try-catch: if tool-calling causes a 500 error (common with
-        // Ollama models that don't fully support function calling), we gracefully
-        // fall back to simple streaming mode instead of showing an error.
         try {
-          const systemPrompt = buildSystemPrompt(workspacePath, fileContext, workspaceTree, activeConfig.provider === "local");
+          const systemPrompt = buildSystemPrompt(workspacePath, fileContext, workspaceTree, false);
           const langChainMessages: BaseMessage[] = [
             new SystemMessage(systemPrompt),
           ];
 
-          // Add conversation history — fewer for local models to save context
-          const historyCount = activeConfig.provider === "local" ? 4 : 10;
-          for (const msg of messages.slice(-historyCount)) {
+          // Truncate history messages to save tokens
+          for (const msg of messages.slice(-6)) {
+            const truncated = msg.content.length > 800
+              ? msg.content.slice(0, 800) + "...(truncated)"
+              : msg.content;
             if (msg.role === "user") {
-              langChainMessages.push(new HumanMessage(msg.content));
+              langChainMessages.push(new HumanMessage(truncated));
             } else if (msg.role === "assistant" && !msg.isStreaming) {
-              langChainMessages.push(new AIMessage(msg.content));
+              langChainMessages.push(new AIMessage(truncated));
             }
           }
           langChainMessages.push(new HumanMessage(content));

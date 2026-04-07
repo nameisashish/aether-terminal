@@ -190,13 +190,17 @@ async function streamOllamaViaRust(
 
   const sessionId = Math.random().toString(36).slice(2) + Date.now().toString(36);
 
-  // Build Ollama-format messages
+  // Build Ollama-format messages — only last 4 messages + truncate long ones
   const ollamaMessages: { role: string; content: string }[] = [];
   if (systemPrompt) {
     ollamaMessages.push({ role: "system", content: systemPrompt });
   }
-  for (const msg of messages) {
-    ollamaMessages.push({ role: msg.role, content: msg.content });
+  const recentMessages = messages.slice(-4);
+  for (const msg of recentMessages) {
+    const content = msg.content.length > 600
+      ? msg.content.slice(0, 600) + "...(truncated)"
+      : msg.content;
+    ollamaMessages.push({ role: msg.role, content });
   }
 
   // Listen for streaming chunks BEFORE invoking the command
@@ -249,8 +253,13 @@ export async function streamChat(
   }
 
   // ── Cloud providers: use LangChain ──
+  // Truncate history to save tokens — only last 6 messages, capped at 800 chars each
+  const trimmedMessages = messages.slice(-6).map((m) => ({
+    ...m,
+    content: m.content.length > 800 ? m.content.slice(0, 800) + "...(truncated)" : m.content,
+  }));
   const model = createChatModel(config, apiKeys);
-  const langChainMessages = toLangChainMessages(messages);
+  const langChainMessages = toLangChainMessages(trimmedMessages);
 
   // Prepend system prompt if provided
   if (systemPrompt) {
