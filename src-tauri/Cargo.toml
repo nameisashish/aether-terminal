@@ -1,6 +1,6 @@
 [package]
 name = "aether-terminal"
-version = "0.4.0"
+version = "0.4.1"
 description = "Aether Terminal — AI-native terminal"
 authors = ["Ashish Kishore"]
 edition = "2021"

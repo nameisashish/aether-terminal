@@ -349,10 +349,12 @@ export const useAiStore = create<AiState>((set, get) => ({
         const models = await getOllamaModels();
         if (models.length > 0 && (config.model === "auto" || !models.includes(config.model))) {
           const preferred = [
-            "llama3.2:3b", "llama3.2:1b", "qwen2.5-coder:1.5b",
-            "gemma2:2b", "phi3:mini", "qwen2.5-coder:7b",
-            "qwen3:1.7b", "qwen3:4b", "llama3.1:8b",
-            "mistral:latest", "qwen2.5-coder:latest",
+            "qwen2.5-coder:7b", "llama3.1:8b", "qwen3:8b",
+            "deepseek-coder-v2:16b", "mistral:7b", "gemma2:9b",
+            "qwen2.5-coder:3b", "llama3.2:3b", "qwen3:4b",
+            "phi3:mini", "qwen2.5-coder:1.5b", "llama3.2:1b",
+            "gemma2:2b", "qwen3:1.7b", "mistral:latest",
+            "qwen2.5-coder:latest",
           ];
           const bestModel = preferred.find((m) => models.includes(m)) || models[0];
           const newConfig = { ...config, model: bestModel };
@@ -385,10 +387,12 @@ export const useAiStore = create<AiState>((set, get) => ({
         const models = await getOllamaModels();
         if (models.length > 0 && (config.model === "auto" || !models.includes(config.model))) {
           const preferred = [
-            "llama3.2:3b", "llama3.2:1b", "qwen2.5-coder:1.5b",
-            "gemma2:2b", "phi3:mini", "qwen2.5-coder:7b",
-            "qwen3:1.7b", "qwen3:4b", "llama3.1:8b",
-            "mistral:latest", "qwen2.5-coder:latest",
+            "qwen2.5-coder:7b", "llama3.1:8b", "qwen3:8b",
+            "deepseek-coder-v2:16b", "mistral:7b", "gemma2:9b",
+            "qwen2.5-coder:3b", "llama3.2:3b", "qwen3:4b",
+            "phi3:mini", "qwen2.5-coder:1.5b", "llama3.2:1b",
+            "gemma2:2b", "qwen3:1.7b", "mistral:latest",
+            "qwen2.5-coder:latest",
           ];
           const bestModel = preferred.find((m) => models.includes(m)) || models[0];
           config = { ...config, model: bestModel };

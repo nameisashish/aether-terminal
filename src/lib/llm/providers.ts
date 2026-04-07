@@ -66,13 +66,15 @@ export function createChatModel(
 
   switch (config.provider) {
     case "local": {
+      // 7B+ models can handle larger context; keep small for <3B
+      const isSmallModel = /(1\.5b|1b|2b|1\.7b|mini)/i.test(config.model);
       const ollamaModel = new ChatOllama({
         model: config.model,
         temperature: config.temperature,
         baseUrl: "http://localhost:11434",
-        numCtx: 2048,       // Smaller context = faster inference
+        numCtx: isSmallModel ? 2048 : 4096,
         keepAlive: "10m",
-        numPredict: 512,    // Cap output for faster tool-call responses
+        numPredict: isSmallModel ? 512 : 1024,
         fetch: createTauriFetch(),
       });
       return ollamaModel;
@@ -220,7 +222,7 @@ async function streamOllamaViaRust(
       model: config.model,
       messages: ollamaMessages,
       temperature: config.temperature ?? 0.7,
-      numCtx: 2048,
+      numCtx: /(1\.5b|1b|2b|1\.7b|mini)/i.test(config.model) ? 2048 : 4096,
       numPredict: config.maxTokens ?? 1024,
     });
 

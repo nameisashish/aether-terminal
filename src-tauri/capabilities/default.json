@@ -1,12 +1,18 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability for the main window",
+  "description": "Capability for the main window — full filesystem + shell access for AI coding tools",
   "windows": ["main"],
   "permissions": [
     "core:default",
     "opener:default",
+    "store:default",
+    "dialog:default",
+    "dialog:allow-open",
+
     "fs:default",
+    "fs:read-all",
+    "fs:write-all",
     "fs:allow-read-dir",
     "fs:allow-read-file",
     "fs:allow-read-text-file",
@@ -18,12 +24,11 @@
     "fs:allow-rename",
     "fs:allow-copy-file",
     "fs:allow-stat",
-    "store:default",
+
     "shell:default",
     "shell:allow-open",
     "shell:allow-execute",
-    "dialog:default",
-    "dialog:allow-open",
+
     {
       "identifier": "http:default",
       "allow": [
