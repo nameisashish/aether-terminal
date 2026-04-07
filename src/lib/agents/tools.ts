@@ -11,6 +11,13 @@
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import type { PendingApproval, AgentRole } from "./types";
+import {
+  buildCodeGraph,
+  getImpactRadius,
+  getArchitectureOverview,
+  findLargeFunctions,
+  getGraphStats,
+} from "../codegraph";
 
 type ApprovalCallback = (approval: PendingApproval) => Promise<boolean>;
 type OutputCallback = (output: string) => void;
@@ -233,70 +240,136 @@ export function createAgentTools(
     }
   );
 
-  // ── Analyze Imports Tool (blast-radius awareness) ──
-  // Inspired by code-review-graph: traces import/dependency relationships
-  // so the AI understands which files are connected before making changes.
-  const analyzeImportsTool = tool(
-    async ({ filePath, directory }) => {
+  // ── Code Graph Tools (inspired by code-review-graph) ──
+  // Builds a file-level dependency graph, then provides
+  // blast-radius analysis, architecture overview, and more.
+
+  const buildGraphTool = tool(
+    async ({ directory }) => {
       try {
-        const { readTextFile } = await import("@tauri-apps/plugin-fs");
-        const content = await readTextFile(filePath);
-
-        // Extract imports/requires from the file
-        const importPatterns = [
-          /import\s+.*?\s+from\s+['"](.+?)['"]/g,           // ES import
-          /import\s*\(\s*['"](.+?)['"]\s*\)/g,               // dynamic import
-          /require\s*\(\s*['"](.+?)['"]\s*\)/g,              // CommonJS
-          /use\s+(\w+(?:::\w+)*)/g,                           // Rust use
-          /from\s+(\S+)\s+import/g,                           // Python
-          /#include\s*[<"](.+?)[>"]/g,                        // C/C++
-        ];
-
-        const imports: string[] = [];
-        for (const pattern of importPatterns) {
-          let match;
-          while ((match = pattern.exec(content)) !== null) {
-            imports.push(match[1]);
-          }
-        }
-
-        // Find files that import THIS file (reverse dependencies)
-        let dependents = "";
-        if (directory) {
-          const { Command } = await import("@tauri-apps/plugin-shell");
-          const baseName = filePath.split("/").pop()?.replace(/\.\w+$/, "") || "";
-          if (baseName) {
-            const shellEscape = (s: string) => `'${s.replace(/'/g, "'\\''")}'`;
-            const cmd = `grep -rn --include="*.ts" --include="*.tsx" --include="*.js" --include="*.py" --include="*.rs" ${shellEscape(baseName)} ${shellEscape(directory)} | grep -i "import\\|from\\|require\\|use " | head -30`;
-            const shellCmd = Command.create("sh", ["-c", cmd]);
-            const output = await shellCmd.execute();
-            dependents = output.stdout || "(no dependents found)";
-          }
-        }
-
-        const result = [
-          `FILE: ${filePath}`,
-          `\nIMPORTS (${imports.length} dependencies):`,
-          imports.length > 0 ? imports.map((i) => `  → ${i}`).join("\n") : "  (none)",
-          dependents ? `\nIMPORTED BY (reverse dependencies):\n${dependents}` : "",
-        ].join("\n");
-
-        onOutput(`🔗 Analyzed imports: ${filePath}`);
-        return result;
+        const graph = await buildCodeGraph(directory);
+        const stats = getGraphStats(graph);
+        onOutput(`📊 Built code graph: ${graph.fileCount} files, ${graph.edgeCount} edges`);
+        return stats;
       } catch (err) {
-        return `Error analyzing imports: ${err}`;
+        return `Error building code graph: ${err}`;
       }
     },
     {
-      name: "analyze_imports",
+      name: "build_code_graph",
       description:
-        "Analyze a file's import/dependency graph. Shows what the file depends on and what depends on it (blast radius). Use BEFORE modifying a file to understand its impact on the codebase.",
+        "Scan the workspace and build a dependency graph of all source files. Returns stats about the codebase (file count, languages, edges). Must be called before using get_impact_radius or get_architecture.",
       schema: z.object({
-        filePath: z.string().describe("Absolute path to the file to analyze"),
-        directory: z.string().optional().describe("Workspace root — used to find reverse dependencies (files that import this one)"),
+        directory: z.string().describe("Absolute path to the workspace root"),
       }),
     }
   );
 
-  return [readFileTool, writeFileTool, patchFileTool, runCommandTool, listDirTool, searchFilesTool, analyzeImportsTool];
+  const impactRadiusTool = tool(
+    async ({ directory, filePath }) => {
+      try {
+        const graph = await buildCodeGraph(directory);
+        const relativePath = filePath.replace(directory + "/", "");
+        const impact = getImpactRadius(graph, relativePath);
+
+        const lines = [
+          `BLAST RADIUS for: ${relativePath}`,
+          `\nDirect dependencies (${impact.directDependencies.length} files this imports):`,
+          ...impact.directDependencies.map((f) => `  → ${f}`),
+          `\nDirect dependents (${impact.directDependents.length} files that import this):`,
+          ...impact.directDependents.map((f) => `  ← ${f}`),
+          `\nTransitive impact (${impact.transitiveDependents.length} total files affected):`,
+          ...impact.transitiveDependents.slice(0, 20).map((f) => `  ⚡ ${f}`),
+          impact.transitiveDependents.length > 20 ? `  ... and ${impact.transitiveDependents.length - 20} more` : "",
+          `\nMax impact depth: ${impact.depth}`,
+        ].filter(Boolean);
+
+        onOutput(`🎯 Impact radius: ${relativePath} → ${impact.transitiveDependents.length} files affected`);
+        return lines.join("\n");
+      } catch (err) {
+        return `Error computing impact radius: ${err}`;
+      }
+    },
+    {
+      name: "get_impact_radius",
+      description:
+        "Compute the blast radius of changing a file. Shows all files that depend on it (direct + transitive). Use BEFORE modifying a file to understand what could break.",
+      schema: z.object({
+        directory: z.string().describe("Absolute path to the workspace root"),
+        filePath: z.string().describe("Absolute path to the file to analyze"),
+      }),
+    }
+  );
+
+  const architectureTool = tool(
+    async ({ directory }) => {
+      try {
+        const graph = await buildCodeGraph(directory);
+        const modules = getArchitectureOverview(graph);
+
+        const lines = [`ARCHITECTURE OVERVIEW (${graph.fileCount} files, ${graph.edgeCount} dependency edges)\n`];
+        for (const mod of modules) {
+          lines.push(`📦 ${mod.name}/ (${mod.files.length} files)`);
+          lines.push(`   Internal edges: ${mod.internalEdges} | External edges: ${mod.externalEdges}`);
+          if (mod.coupledTo.length > 0) {
+            lines.push(`   Coupled to: ${mod.coupledTo.map((c) => `${c.module} (${c.edges})`).join(", ")}`);
+          }
+        }
+
+        onOutput(`🏗️ Architecture: ${modules.length} modules analyzed`);
+        return lines.join("\n");
+      } catch (err) {
+        return `Error analyzing architecture: ${err}`;
+      }
+    },
+    {
+      name: "get_architecture",
+      description:
+        "Get an architecture overview showing module coupling. Groups files by directory and shows how modules depend on each other. Useful for understanding codebase structure before large changes.",
+      schema: z.object({
+        directory: z.string().describe("Absolute path to the workspace root"),
+      }),
+    }
+  );
+
+  const largeFunctionsTool = tool(
+    async ({ directory, threshold }) => {
+      try {
+        const graph = await buildCodeGraph(directory);
+        const large = findLargeFunctions(graph, threshold || 50);
+
+        if (large.length === 0) {
+          return `No functions found exceeding ${threshold || 50} lines.`;
+        }
+
+        const lines = [`LARGE FUNCTIONS (>${threshold || 50} lines):\n`];
+        for (const fn of large.slice(0, 30)) {
+          lines.push(`  ${fn.file}:${fn.startLine} — ${fn.name}() — ${fn.lineCount} lines`);
+        }
+        if (large.length > 30) {
+          lines.push(`  ... and ${large.length - 30} more`);
+        }
+
+        onOutput(`📏 Found ${large.length} large functions`);
+        return lines.join("\n");
+      } catch (err) {
+        return `Error finding large functions: ${err}`;
+      }
+    },
+    {
+      name: "find_large_functions",
+      description:
+        "Find functions that exceed a line count threshold (default 50). These are candidates for refactoring. Returns function name, file, line number, and size.",
+      schema: z.object({
+        directory: z.string().describe("Absolute path to the workspace root"),
+        threshold: z.number().optional().describe("Minimum lines to flag (default: 50)"),
+      }),
+    }
+  );
+
+  return [
+    readFileTool, writeFileTool, patchFileTool, runCommandTool,
+    listDirTool, searchFilesTool,
+    buildGraphTool, impactRadiusTool, architectureTool, largeFunctionsTool,
+  ];
 }
