@@ -161,47 +161,117 @@ async function getWorkspaceTree(workspacePath: string): Promise<string> {
 }
 
 /**
- * System prompt — two versions:
- * - LOCAL: Ultra-compact (~300 tokens) for small Ollama models
- * - CLOUD: Full-featured for cloud providers with larger context
+ * Auto-detect project tech stack from config files.
+ * Reads package.json, Cargo.toml, etc. and returns a compact summary.
+ * Cached per workspace path.
+ */
+let _stackCache: { path: string; stack: string; ts: number } | null = null;
+
+async function detectTechStack(workspacePath: string): Promise<string> {
+  if (_stackCache && _stackCache.path === workspacePath && Date.now() - _stackCache.ts < TREE_CACHE_TTL) {
+    return _stackCache.stack;
+  }
+
+  const parts: string[] = [];
+
+  try {
+    const { readTextFile } = await import("@tauri-apps/plugin-fs");
+
+    // package.json — Node/JS/TS projects
+    try {
+      const pkg = JSON.parse(await readTextFile(`${workspacePath}/package.json`));
+      const deps = Object.keys({ ...pkg.dependencies, ...pkg.devDependencies }).slice(0, 12);
+      const scripts = Object.keys(pkg.scripts || {}).slice(0, 6);
+      parts.push(`Node: ${pkg.name || "unnamed"}${pkg.version ? " v" + pkg.version : ""}`);
+      if (deps.length) parts.push(`Deps: ${deps.join(", ")}`);
+      if (scripts.length) parts.push(`Scripts: ${scripts.join(", ")}`);
+    } catch { /* no package.json */ }
+
+    // Cargo.toml — Rust projects
+    try {
+      const cargo = await readTextFile(`${workspacePath}/Cargo.toml`);
+      const nameMatch = cargo.match(/name\s*=\s*"(.+?)"/);
+      const depSection = cargo.split("[dependencies]")[1]?.split("[")[0] || "";
+      const rustDeps = depSection.match(/^(\w[\w-]*)/gm)?.slice(0, 8) || [];
+      if (nameMatch) parts.push(`Rust: ${nameMatch[1]}`);
+      if (rustDeps.length) parts.push(`Crates: ${rustDeps.join(", ")}`);
+    } catch { /* no Cargo.toml */ }
+
+    // requirements.txt / pyproject.toml — Python
+    try {
+      const reqs = await readTextFile(`${workspacePath}/requirements.txt`);
+      const pyDeps = reqs.split("\n").filter(l => l.trim() && !l.startsWith("#")).slice(0, 8).map(l => l.split("=")[0].split(">")[0].split("<")[0].trim());
+      if (pyDeps.length) parts.push(`Python deps: ${pyDeps.join(", ")}`);
+    } catch {
+      try {
+        const pyproj = await readTextFile(`${workspacePath}/pyproject.toml`);
+        const nameMatch = pyproj.match(/name\s*=\s*"(.+?)"/);
+        if (nameMatch) parts.push(`Python: ${nameMatch[1]}`);
+      } catch { /* no python config */ }
+    }
+
+    // go.mod — Go projects
+    try {
+      const gomod = await readTextFile(`${workspacePath}/go.mod`);
+      const modName = gomod.match(/module\s+(\S+)/)?.[1];
+      if (modName) parts.push(`Go: ${modName}`);
+    } catch { /* no go.mod */ }
+
+  } catch { /* fs unavailable */ }
+
+  const stack = parts.join(" | ");
+  _stackCache = { path: workspacePath, stack, ts: Date.now() };
+  return stack;
+}
+
+/**
+ * System prompt — Claude-Code-style: context-aware, concise, code-first.
+ * LOCAL: ultra-compact for small models, no tool listing (they don't tool-call).
+ * CLOUD: concise with tools, workflow rules.
  */
 function buildSystemPrompt(
   workspacePath?: string | null,
   fileContext?: string,
   workspaceTree?: string,
-  isLocal?: boolean
+  isLocal?: boolean,
+  techStack?: string
 ): string {
-  // ── LOCAL: compact prompt for small models ──
+  // ── LOCAL: direct streaming only, no tools ──
   if (isLocal) {
-    let prompt = `You are Aether, a coding AI with full codebase access. Use your tools to read, write, and search files. Always use tools — never say you can't access files.
+    let prompt = `You are Aether, a senior coding assistant. You know this project's structure and tech stack. Give precise, code-first answers.
 
-Tools: read_file, write_file, patch_file, run_command, list_directory, search_files, delegate_to_agents.
-For changes: read first, then write/patch. User approves writes.`;
+RESPONSE RULES:
+- Lead with the answer or code, not explanation
+- Show exact file paths and line numbers when referencing code
+- Give complete, working code — never placeholders
+- Keep responses short and actionable
+- For commands: show the exact command to run`;
 
-    if (workspacePath) prompt += `\nWorkspace: ${workspacePath}`;
+    if (techStack) prompt += `\n\nStack: ${techStack}`;
+    if (workspacePath) prompt += `\nPath: ${workspacePath}`;
     if (workspaceTree) prompt += `\nFiles:\n${workspaceTree}`;
-    if (fileContext) prompt += `\nContext:\n${fileContext}`;
+    if (fileContext) prompt += `\nOpen:\n${fileContext}`;
     return prompt;
   }
 
-  // ── CLOUD: full prompt for capable models ──
-  let prompt = `You are Aether, an AI coding assistant with full codebase access. Use tools to perform real actions.
+  // ── CLOUD: tools + concise workflow ──
+  let prompt = `You are Aether, a senior coding assistant with full codebase access via tools.
 
-TOOLS: read_file, write_file, patch_file, run_command, list_directory, search_files, build_code_graph, get_impact_radius, get_architecture, find_large_functions, delegate_to_agents.
+RESPONSE RULES:
+- Lead with the answer or action, not reasoning
+- Show exact file paths when referencing code
+- Give complete, working code — never placeholders or pseudo-code
+- Keep responses short. If one sentence works, don't write three.
+- After changes: verify with run_command (build/test)
 
-WORKFLOW:
-1. Plan before multi-step tasks (show numbered checklist)
-2. Read files before modifying — use get_impact_radius for blast-radius awareness
-3. Write changes via write_file/patch_file (user approves)
-4. Verify after changes: run build/test/lint via run_command
-5. For complex tasks: delegate_to_agents (Architect, Coder, Reviewer, Tester, QA, Deployer)
+TOOLS: read_file, write_file, patch_file, run_command, list_directory, search_files, build_code_graph, get_impact_radius, delegate_to_agents.
+Always use tools for file operations. Never say "I can't access files."`;
 
-RULES: Always use tools. Never say "I can't access files." Minimal changes only. Fix root causes.`;
-
-  if (workspacePath) prompt += `\n\nWorkspace: ${workspacePath}`;
-  if (workspaceTree) prompt += `\n\nProject structure:\n\`\`\`\n${workspaceTree}\n\`\`\``;
-  if (fileContext) prompt += `\n\nFiles in context:\n${fileContext}`;
-  return prompt;
+    if (techStack) prompt += `\n\nStack: ${techStack}`;
+    if (workspacePath) prompt += `\nPath: ${workspacePath}`;
+    if (workspaceTree) prompt += `\nFiles:\n${workspaceTree}`;
+    if (fileContext) prompt += `\nOpen:\n${fileContext}`;
+    return prompt;
 }
 
 export const useAiStore = create<AiState>((set, get) => ({
@@ -405,11 +475,15 @@ export const useAiStore = create<AiState>((set, get) => ({
         }
       }
 
-      // Fetch workspace directory tree for project awareness
+      // Fetch workspace context: directory tree + tech stack
       let workspaceTree = "";
+      let techStack = "";
       if (workspacePath) {
         try {
-          workspaceTree = await getWorkspaceTree(workspacePath);
+          [workspaceTree, techStack] = await Promise.all([
+            getWorkspaceTree(workspacePath),
+            detectTechStack(workspacePath),
+          ]);
         } catch { /* non-critical */ }
       }
 
@@ -499,7 +573,7 @@ export const useAiStore = create<AiState>((set, get) => ({
 
       // Helper: run simple streaming mode (no tools)
       const runSimpleStreaming = async (prefix?: string) => {
-        const systemPrompt = buildSystemPrompt(workspacePath, fileContext, workspaceTree, activeConfig.provider === "local");
+        const systemPrompt = buildSystemPrompt(workspacePath, fileContext, workspaceTree, activeConfig.provider === "local", techStack);
         const allMessages = [...messages, userMessage];
 
         if (prefix) {
@@ -558,7 +632,7 @@ export const useAiStore = create<AiState>((set, get) => ({
 
       if (modelWithTools) {
         try {
-          const systemPrompt = buildSystemPrompt(workspacePath, fileContext, workspaceTree, false);
+          const systemPrompt = buildSystemPrompt(workspacePath, fileContext, workspaceTree, false, techStack);
           const langChainMessages: BaseMessage[] = [
             new SystemMessage(systemPrompt),
           ];
